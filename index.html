@@ -15,32 +15,25 @@
     </header>
 
     <main class="app-shell">
+      <section class="toolbar search-toolbar" aria-label="Search saved papers">
+        <div class="field-group search-group">
+          <label for="search-input">Search</label>
+          <input id="search-input" type="search" placeholder="Search saved papers">
+        </div>
+        <span id="top-paper-count" class="count">0 papers</span>
+      </section>
+
       <section class="paste-workflow" aria-label="ChatGPT markdown import">
         <div class="section-heading compact-heading">
           <h2>Paste ChatGPT 12-section Markdown</h2>
           <span id="main-markdown-count" class="count">Parsed 0/13 sections</span>
         </div>
-        <textarea id="markdownPasteInput" rows="14" placeholder="Paste the full ChatGPT 0–12 literature summary here."></textarea>
+        <textarea id="markdownPasteInput" rows="2" placeholder="Paste the full ChatGPT 0-12 literature summary here."></textarea>
         <div class="button-row paste-actions">
           <button type="button" id="importMarkdownButton">Import Markdown</button>
           <button type="button" id="clearMarkdownButton">Clear</button>
         </div>
         <p id="markdownImportStatus" class="status-message" role="status"></p>
-      </section>
-
-      <section class="toolbar secondary-toolbar" aria-label="Search and secondary DOI tools">
-        <div class="field-group search-group">
-          <label for="search-input">Search</label>
-          <input id="search-input" type="search" placeholder="Search saved papers">
-        </div>
-
-        <div class="field-group doi-group secondary-doi">
-          <label for="doi-input">Optional DOI metadata import</label>
-          <div class="inline-control">
-            <input id="doi-input" type="text" placeholder="10.1038/s41586-020-2649-2">
-            <button type="button" id="import-doi">Import DOI</button>
-          </div>
-        </div>
       </section>
 
       <div class="content-grid">

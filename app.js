@@ -73,13 +73,12 @@ let repository = null;
 
 const paperList = document.querySelector("#paper-list");
 const paperCount = document.querySelector("#paper-count");
+const topPaperCount = document.querySelector("#top-paper-count");
 const emptyList = document.querySelector("#empty-list");
 const searchInput = document.querySelector("#search-input");
-const doiInput = document.querySelector("#doi-input");
 const statusMessage = document.querySelector("#status-message");
 const deleteButton = document.querySelector("#delete-paper");
 const saveButton = document.querySelector("#save-paper");
-const importDoiButton = document.querySelector("#import-doi");
 const mainMarkdownInput = document.querySelector("#markdownPasteInput");
 const mainMarkdownStatus = document.querySelector("#markdownImportStatus");
 const mainMarkdownCount = document.querySelector("#main-markdown-count");
@@ -442,6 +441,11 @@ async function importMarkdownToCurrentRecord(options = {}) {
     return;
   }
 
+  if (parsed.foundCount < 8) {
+    setTargetStatus(options.statusTarget || null, "Warning: This does not look like a complete ChatGPT 12-section literature summary.");
+    return;
+  }
+
   const incoming = parsed.record;
   const isSavedCurrent = currentPaper && papers.some((paper) => paper.id === currentPaper.id);
   const duplicate = incoming.doi
@@ -490,11 +494,16 @@ async function importMarkdownToCurrentRecord(options = {}) {
   if (!incoming.title || !incoming.doi) {
     warnings.push("Warning: title or DOI is missing.");
   }
+
+  if (options.clearOnSuccess && options.input) {
+    options.input.value = "";
+  }
+
   setTargetStatus(
     options.statusTarget || null,
     warnings.length
-      ? `Parsed record imported into editor. ${warnings.join(" ")} Review and Save.`
-      : "Parsed record imported into editor. Review and Save."
+      ? `Imported ${parsed.foundCount}/13 sections. Paste box cleared. ${warnings.join(" ")} Review fields and click Save.`
+      : `Imported ${parsed.foundCount}/13 sections. Paste box cleared. Review fields and click Save.`
   );
 }
 
@@ -557,6 +566,7 @@ function renderPaperList() {
   const visiblePapers = getFilteredPapers();
   paperList.innerHTML = "";
   paperCount.textContent = `${visiblePapers.length} ${visiblePapers.length === 1 ? "paper" : "papers"}`;
+  topPaperCount.textContent = paperCount.textContent;
   emptyList.hidden = visiblePapers.length > 0;
 
   visiblePapers.forEach((paper) => {
@@ -663,234 +673,6 @@ function getPublishedYear(dateParts) {
     : "";
 }
 
-function formatPersonName(author) {
-  const given = cleanText(author.given || author.firstName || "");
-  const family = cleanText(author.family || author.lastName || author.displayName || author.name || "");
-  return [given, family].filter(Boolean).join(" ") || family || given;
-}
-
-function formatShortAuthorName(author) {
-  const explicitName = cleanText(author.family || author.lastName || author.name);
-
-  if (explicitName) {
-    return explicitName;
-  }
-
-  const displayName = cleanText(author.displayName || formatPersonName(author));
-  const parts = displayName.split(/\s+/).filter(Boolean);
-  return parts.length > 1 ? parts[parts.length - 1] : displayName;
-}
-
-function formatNickname(authors, year) {
-  const names = authors.map(formatShortAuthorName).filter(Boolean);
-
-  if (names.length === 0 || !year) {
-    return "";
-  }
-
-  if (names.length === 1) {
-    return `${names[0]} (${year})`;
-  }
-
-  if (names.length === 2) {
-    return `${names[0]} & ${names[1]} (${year})`;
-  }
-
-  return `${names[0]} et al. (${year})`;
-}
-
-function formatNatureAuthors(authors) {
-  const names = authors.map(formatShortAuthorName).filter(Boolean);
-
-  if (names.length <= 2) {
-    return names.join(" & ");
-  }
-
-  return `${names[0]} et al.`;
-}
-
-function formatReferenceNature(metadata) {
-  const parts = [];
-  const authorText = formatNatureAuthors(metadata.authors);
-  const journal = metadata.shortJournal || metadata.journal;
-  const volume = metadata.volume;
-  const pages = metadata.pages;
-  const year = metadata.year;
-
-  if (authorText) {
-    parts.push(`${authorText}.`);
-  }
-
-  if (metadata.title) {
-    parts.push(`${metadata.title}.`);
-  }
-
-  if (journal) {
-    let journalPart = journal;
-    if (volume) {
-      journalPart += ` ${volume}`;
-    }
-    if (pages) {
-      journalPart += `, ${pages}`;
-    }
-    if (year) {
-      journalPart += ` (${year})`;
-    }
-    parts.push(`${journalPart}.`);
-  } else if (year) {
-    parts.push(`(${year}).`);
-  }
-
-  return parts.join(" ");
-}
-
-function formatJournalInfo(metadata) {
-  const journal = metadata.journal;
-  const volumeIssue = metadata.volume
-    ? `${metadata.volume}${metadata.issue ? `(${metadata.issue})` : ""}`
-    : "";
-
-  return [journal, volumeIssue, metadata.pages, metadata.year].filter(Boolean).join(", ");
-}
-
-function abstractFromInvertedIndex(index) {
-  if (!index || typeof index !== "object") {
-    return "";
-  }
-
-  const words = [];
-  Object.entries(index).forEach(([word, positions]) => {
-    if (Array.isArray(positions)) {
-      positions.forEach((position) => {
-        words[position] = word;
-      });
-    }
-  });
-
-  return cleanText(words.filter(Boolean).join(" "));
-}
-
-function mapCrossrefMessage(message, doi) {
-  const authors = Array.isArray(message.author)
-    ? message.author.map((author) => ({
-        given: author.given,
-        family: author.family
-      }))
-    : [];
-  const year =
-    getPublishedYear(message.published && message.published["date-parts"]) ||
-    getPublishedYear(message["published-print"] && message["published-print"]["date-parts"]) ||
-    getPublishedYear(message["published-online"] && message["published-online"]["date-parts"]) ||
-    getPublishedYear(message.issued && message.issued["date-parts"]);
-
-  return {
-    source: "Crossref",
-    doi: cleanText(message.DOI || doi),
-    title: firstText(message.title),
-    authors,
-    year,
-    journal: firstText(message["container-title"]),
-    shortJournal: firstText(message["short-container-title"]),
-    volume: cleanText(message.volume),
-    issue: cleanText(message.issue),
-    pages: cleanText(message.page),
-    abstract: cleanText(message.abstract)
-  };
-}
-
-async function fetchJson(url) {
-  const response = await fetch(url, {
-    headers: {
-      Accept: "application/json"
-    }
-  });
-
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}`);
-  }
-
-  return response.json();
-}
-
-async function fetchDoiMetadata(doi) {
-  const errors = [];
-  const crossrefUrls = [
-    `https://api.crossref.org/works/${doi}`,
-    `https://api.crossref.org/works/${encodeURIComponent(doi)}`
-  ];
-
-  for (const url of crossrefUrls) {
-    try {
-      const crossrefData = await fetchJson(url);
-      if (crossrefData && crossrefData.message) {
-        return mapCrossrefMessage(crossrefData.message, doi);
-      }
-    } catch (error) {
-      errors.push(error.message);
-    }
-  }
-
-  throw new Error(errors.join(" | ") || "DOI metadata not found.");
-}
-
-function applyMetadataToForm(metadata) {
-  const existing = getFormPaper();
-  const nickname = formatNickname(metadata.authors, metadata.year);
-  const customTitle = nickname ? `${nickname} - key topic` : "";
-  const abstract = metadata.abstract || "Abstract not available from metadata source.";
-  const placeholder = "Generate this section with ChatGPT and paste/import the result.";
-
-  currentPaper = normalizePaper({
-    ...existing,
-    doi: metadata.doi || "",
-    title: metadata.title || "",
-    nickname,
-    referenceNature: formatReferenceNature(metadata),
-    journalInfo: formatJournalInfo(metadata),
-    customTitle: nickname ? `${nickname} - key topic` : "",
-    abstractOriginal: metadata.abstract || "",
-    abstractKo: existing.abstractKo || placeholder,
-    summaryKo: existing.summaryKo || placeholder,
-    aimKo: existing.aimKo || placeholder,
-    resultKo: existing.resultKo || placeholder,
-    methodKo: existing.methodKo || placeholder,
-    updatedAt: new Date().toISOString()
-  });
-  selectedPaperId = currentPaper.id;
-  loadPaperIntoForm(currentPaper);
-  renderPaperList();
-}
-
-async function importDoiMetadata() {
-  const normalizedDoi = normalizeDoiInput(doiInput.value || formFields.doi.value);
-
-  if (!normalizedDoi || !isValidDoi(normalizedDoi)) {
-    setStatus("Invalid DOI. Enter a DOI like 10.xxxx/example, with or without a doi.org prefix.");
-    return;
-  }
-
-  importDoiButton.disabled = true;
-  setStatus("Fetching DOI metadata...");
-
-  try {
-    doiInput.value = normalizedDoi;
-    const metadata = await fetchDoiMetadata(normalizedDoi);
-
-    if (!metadata.title && !metadata.doi) {
-      setStatus("DOI metadata not found.");
-      return;
-    }
-
-    applyMetadataToForm(metadata);
-    setStatus("Metadata imported.");
-  } catch (error) {
-    console.error("Failed DOI metadata fetch.", error);
-    setStatus(`DOI metadata not found. ${error.message}`);
-  } finally {
-    importDoiButton.disabled = false;
-  }
-}
-
 async function refreshFromStorage() {
   papers = await repository.getAll();
 
@@ -965,10 +747,6 @@ document.querySelector("#new-paper").addEventListener("click", () => {
   setStatus("New blank paper ready. Save to add it to the list.");
 });
 
-document.querySelector("#import-doi").addEventListener("click", () => {
-  importDoiMetadata();
-});
-
 document.querySelector("#save-paper").addEventListener("click", () => {
   saveCurrentPaper().catch((error) => setStatus(`Save failed: ${error.message}`));
 });
@@ -988,7 +766,8 @@ document.querySelector("#importMarkdownButton").addEventListener("click", () => 
   importMarkdownToCurrentRecord({
     input: mainMarkdownInput,
     countTarget: mainMarkdownCount,
-    statusTarget: mainMarkdownStatus
+    statusTarget: mainMarkdownStatus,
+    clearOnSuccess: true
   }).catch((error) => {
     console.error("Markdown import failed.", error);
     setTargetStatus(mainMarkdownStatus, "Markdown import failed.");
