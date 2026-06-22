@@ -95,17 +95,13 @@ const doiInput = document.querySelector("#doi-input");
 const importFile = document.querySelector("#import-file");
 const statusMessage = document.querySelector("#status-message");
 const deleteButton = document.querySelector("#delete-paper");
+const saveButton = document.querySelector("#save-paper");
 const importDoiButton = document.querySelector("#import-doi");
 const chatgptJsonInput = document.querySelector("#chatgpt-json");
-const mainMarkdownInput = document.querySelector("#main-chatgpt-markdown");
-const mainMarkdownPreview = document.querySelector("#main-markdown-preview");
-const mainMarkdownStatus = document.querySelector("#main-markdown-status");
+const mainMarkdownInput = document.querySelector("#markdownPasteInput");
+const mainMarkdownStatus = document.querySelector("#markdownImportStatus");
 const mainMarkdownCount = document.querySelector("#main-markdown-count");
-const markdownModal = document.querySelector("#markdown-modal");
-const markdownInput = document.querySelector("#chatgpt-markdown");
-const markdownPreview = document.querySelector("#markdown-preview");
 let latestMainMarkdownParse = null;
-let latestModalMarkdownParse = null;
 
 const formFields = {
   id: document.querySelector("#paper-id"),
@@ -291,13 +287,6 @@ function parseTags(value) {
     .filter(Boolean);
 }
 
-function setModalOpen(isOpen) {
-  markdownModal.hidden = !isOpen;
-  if (isOpen) {
-    markdownInput.focus();
-  }
-}
-
 function removeMarkdownReferenceNoise(value) {
   return value
     .replace(/^[ \t]*\[\d+\]:\s+\S+.*$/gm, "")
@@ -335,7 +324,18 @@ function parseChatGptMarkdown(markdown) {
 }
 
 function cleanSectionValue(value) {
-  return removeMarkdownReferenceNoise(value || "")
+  const cleaned = removeMarkdownReferenceNoise(value || "").trim();
+  const lines = cleaned.split(/\r?\n/);
+  const nonEmpty = lines.filter((line) => line.trim());
+  const bulletWrapped = nonEmpty.length > 0 && nonEmpty.every((line) => /^\s*[-*+]\s+/.test(line));
+
+  if (!bulletWrapped) {
+    return cleaned;
+  }
+
+  return lines
+    .map((line) => line.replace(/^\s*[-*+]\s?/, ""))
+    .join("\n")
     .trim();
 }
 
@@ -401,65 +401,18 @@ function sectionsToPaperFields(sections, rawMarkdown, options = {}) {
   return record;
 }
 
-function renderMarkdownPreview(record, foundCount, target = markdownPreview, countTarget = null) {
-  target.innerHTML = "";
-
-  if (countTarget) {
-    countTarget.textContent = `Parsed ${foundCount}/13 sections`;
-  }
-
-  const warning = document.createElement("p");
-  warning.className = "status-message";
-  const messages = [];
-
-  if (foundCount < 8) {
-    messages.push("Warning: This does not look like a complete ChatGPT 12-section literature summary.");
-  }
-  if (!record.title || !record.doi) {
-    messages.push("Warning: title or DOI is missing. Import is still allowed.");
-  }
-  warning.textContent = messages.join(" ");
-  target.appendChild(warning);
-
-  [
-    ["referenceNature", record.referenceNature],
-    ["tags", record.tags.join(", ")],
-    ["nickname", record.nickname],
-    ["title", record.title],
-    ["journalInfo", record.journalInfo],
-    ["doi", record.doi],
-    ["aimKo", record.aimKo],
-    ["resultKo", record.resultKo],
-    ["methodKo", record.methodKo],
-    ["noteKo", record.noteKo],
-    ["impactFactor", record.impactFactor],
-    ["summaryKo", record.summaryKo],
-    ["abstractKo", record.abstractKo]
-  ].forEach(([label, value]) => {
-    const row = document.createElement("div");
-    const key = document.createElement("div");
-    const body = document.createElement("div");
-    row.className = "preview-row";
-    key.className = "preview-label";
-    body.className = "preview-value";
-    key.textContent = label;
-    body.textContent = value && value.length > 320 ? `${value.slice(0, 320)}...` : value || "(empty)";
-    row.appendChild(key);
-    row.appendChild(body);
-    target.appendChild(row);
-  });
-}
-
 function parseMarkdownForImport(options = {}) {
   try {
-    const sourceInput = options.input || markdownInput;
-    const previewTarget = options.preview || markdownPreview;
+    const sourceInput = options.input || mainMarkdownInput;
     const countTarget = options.countTarget || null;
     const statusTarget = options.statusTarget || null;
     const sections = parseChatGptMarkdown(sourceInput.value);
     const foundCount = Object.keys(sections).length;
     const record = sectionsToPaperFields(sections, sourceInput.value, options);
-    renderMarkdownPreview(record, foundCount, previewTarget, countTarget);
+
+    if (countTarget) {
+      countTarget.textContent = `Parsed ${foundCount}/13 sections`;
+    }
 
     if (foundCount < 8) {
       setTargetStatus(statusTarget, "Warning: This does not look like a complete ChatGPT 12-section literature summary.");
@@ -508,8 +461,7 @@ function hasMarkdownOverwriteConflicts(existing, incoming) {
 async function importMarkdownToCurrentRecord(options = {}) {
   const parsed = options.parsed || parseMarkdownForImport({
     confirmTagFallback: true,
-    input: options.input || markdownInput,
-    preview: options.preview || markdownPreview,
+    input: options.input || mainMarkdownInput,
     countTarget: options.countTarget || null,
     statusTarget: options.statusTarget || null
   });
@@ -528,9 +480,6 @@ async function importMarkdownToCurrentRecord(options = {}) {
     if (shouldOpen) {
       loadPaperIntoForm(duplicate);
       renderPaperList();
-      if (options.closeModal) {
-        setModalOpen(false);
-      }
       setTargetStatus(options.statusTarget || null, "Existing DOI record opened.");
       return;
     }
@@ -559,9 +508,7 @@ async function importMarkdownToCurrentRecord(options = {}) {
   currentPaper = importedPaper;
   loadPaperIntoForm(importedPaper);
   renderPaperList();
-  if (options.closeModal) {
-    setModalOpen(false);
-  }
+  saveButton.disabled = false;
 
   const warnings = [];
   if (parsed.foundCount < 8) {
@@ -916,7 +863,7 @@ async function fetchDoiMetadata(doi) {
 function applyMetadataToForm(metadata) {
   const existing = getFormPaper();
   const nickname = formatNickname(metadata.authors, metadata.year);
-  const customTitle = nickname ? `${nickname} ??key topic` : "";
+  const customTitle = nickname ? `${nickname} - key topic` : "";
   const abstract = metadata.abstract || "Abstract not available from metadata source.";
   const placeholder = "Generate this section with ChatGPT and paste/import the result.";
 
@@ -1267,54 +1214,22 @@ document.querySelector("#copy-chatgpt-prompt").addEventListener("click", () => {
   copyChatGptPrompt();
 });
 
-document.querySelector("#main-parse-markdown").addEventListener("click", () => {
-  latestMainMarkdownParse = parseMarkdownForImport({
-    input: mainMarkdownInput,
-    preview: mainMarkdownPreview,
-    countTarget: mainMarkdownCount,
-    statusTarget: mainMarkdownStatus
-  });
-});
-
-document.querySelector("#clear-main-markdown").addEventListener("click", () => {
+document.querySelector("#clearMarkdownButton").addEventListener("click", () => {
   mainMarkdownInput.value = "";
-  mainMarkdownPreview.innerHTML = "";
   mainMarkdownStatus.textContent = "";
   mainMarkdownCount.textContent = "Parsed 0/13 sections";
   latestMainMarkdownParse = null;
 });
 
-document.querySelector("#main-import-markdown").addEventListener("click", () => {
+document.querySelector("#importMarkdownButton").addEventListener("click", () => {
   importMarkdownToCurrentRecord({
     input: mainMarkdownInput,
-    preview: mainMarkdownPreview,
     countTarget: mainMarkdownCount,
     statusTarget: mainMarkdownStatus
   }).catch((error) => {
     console.error("Markdown import failed.", error);
     setTargetStatus(mainMarkdownStatus, "Markdown import failed.");
   });
-});
-
-document.querySelector("#parse-markdown-preview").addEventListener("click", () => {
-  latestModalMarkdownParse = parseMarkdownForImport();
-});
-
-document.querySelector("#import-markdown-current").addEventListener("click", () => {
-  importMarkdownToCurrentRecord({ closeModal: true }).catch((error) => {
-    console.error("Markdown import failed.", error);
-    setStatus("Markdown import failed.");
-  });
-});
-
-document.querySelector("#cancel-markdown-import").addEventListener("click", () => {
-  setModalOpen(false);
-});
-
-markdownModal.addEventListener("click", (event) => {
-  if (event.target === markdownModal) {
-    setModalOpen(false);
-  }
 });
 
 document.querySelector("#apply-chatgpt-json").addEventListener("click", () => {

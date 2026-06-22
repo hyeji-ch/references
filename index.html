@@ -20,14 +20,12 @@
           <h2>Paste ChatGPT 12-section Markdown</h2>
           <span id="main-markdown-count" class="count">Parsed 0/13 sections</span>
         </div>
-        <textarea id="main-chatgpt-markdown" rows="14" placeholder="Paste the full ChatGPT 0–12 literature summary here."></textarea>
+        <textarea id="markdownPasteInput" rows="14" placeholder="Paste the full ChatGPT 0–12 literature summary here."></textarea>
         <div class="button-row paste-actions">
-          <button type="button" id="main-parse-markdown">Parse Markdown</button>
-          <button type="button" id="clear-main-markdown">Clear Paste Box</button>
-          <button type="button" id="main-import-markdown">Import Parsed Record</button>
+          <button type="button" id="importMarkdownButton">Import Markdown</button>
+          <button type="button" id="clearMarkdownButton">Clear</button>
         </div>
-        <p id="main-markdown-status" class="status-message" role="status"></p>
-        <div id="main-markdown-preview" class="markdown-preview compact-preview" aria-live="polite"></div>
+        <p id="markdownImportStatus" class="status-message" role="status"></p>
       </section>
 
       <section class="toolbar secondary-toolbar" aria-label="Search and secondary DOI tools">
@@ -176,27 +174,6 @@
         </section>
       </div>
     </main>
-
-    <div id="markdown-modal" class="modal-backdrop" hidden>
-      <section class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="markdown-modal-title">
-        <div class="section-heading compact-heading">
-          <h2 id="markdown-modal-title">Paste ChatGPT Markdown</h2>
-          <button type="button" id="cancel-markdown-import">Cancel</button>
-        </div>
-
-        <label>
-          ChatGPT 12-section markdown
-          <textarea id="chatgpt-markdown" rows="16" placeholder="Paste the numbered ChatGPT markdown summary here"></textarea>
-        </label>
-
-        <div class="button-row modal-actions">
-          <button type="button" id="parse-markdown-preview">Parse Preview</button>
-          <button type="button" id="import-markdown-current">Import to Current Record</button>
-        </div>
-
-        <div id="markdown-preview" class="markdown-preview" aria-live="polite"></div>
-      </section>
-    </div>
 
     <script src="app.js"></script>
   </body>
