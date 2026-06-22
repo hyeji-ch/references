@@ -34,8 +34,9 @@
         <aside class="paper-list-panel" aria-label="Saved papers">
           <div class="section-heading">
             <h2>Saved Papers</h2>
-            <span class="count">1 paper</span>
+            <span id="paper-count" class="count">0 papers</span>
           </div>
+          <p id="empty-list" class="empty-state" hidden>No matching papers.</p>
           <ul id="paper-list" class="paper-list"></ul>
         </aside>
 
@@ -48,42 +49,101 @@
               <button type="button" id="delete-paper">Delete</button>
               <button type="button" id="export-json">Export JSON</button>
               <button type="button" id="import-json">Import JSON</button>
+              <input id="import-file" type="file" accept="application/json,.json" hidden>
             </div>
           </div>
 
           <form id="paper-form" class="paper-form">
-            <label>
-              Title
-              <input id="paper-title" type="text">
-            </label>
-
-            <label>
-              Authors
-              <input id="paper-authors" type="text">
-            </label>
-
             <div class="form-row">
               <label>
-                Year
-                <input id="paper-year" type="text" inputmode="numeric">
+                ID
+                <input id="paper-id" type="text">
               </label>
 
               <label>
-                DOI
-                <input id="paper-doi" type="text">
+                Created At
+                <input id="createdAt" name="createdAt" type="text">
               </label>
             </div>
 
             <label>
-              Journal
-              <input id="paper-journal" type="text">
+              Updated At
+              <input id="updatedAt" name="updatedAt" type="text">
             </label>
 
             <label>
-              Notes
-              <textarea id="paper-notes" rows="8"></textarea>
+              Custom Title
+              <input id="customTitle" name="customTitle" type="text">
+            </label>
+
+            <div class="form-row">
+              <label>
+                Reference Nature
+                <input id="referenceNature" name="referenceNature" type="text">
+              </label>
+
+              <label>
+                Nickname
+                <input id="nickname" name="nickname" type="text">
+              </label>
+            </div>
+
+            <label>
+              Tags
+              <input id="tags" name="tags" type="text" placeholder="comma, separated, tags">
+            </label>
+
+            <label>
+              Original Title
+              <input id="paper-title" type="text">
+            </label>
+
+            <label>
+              Journal Info
+              <input id="journalInfo" name="journalInfo" type="text">
+            </label>
+
+            <label>
+              DOI
+              <input id="paper-doi" type="text">
+            </label>
+
+            <label>
+              Aim (KO)
+              <textarea id="aimKo" name="aimKo" rows="4"></textarea>
+            </label>
+
+            <label>
+              Result (KO)
+              <textarea id="resultKo" name="resultKo" rows="4"></textarea>
+            </label>
+
+            <label>
+              Method (KO)
+              <textarea id="methodKo" name="methodKo" rows="4"></textarea>
+            </label>
+
+            <label>
+              Note (KO)
+              <textarea id="noteKo" name="noteKo" rows="5"></textarea>
+            </label>
+
+            <label>
+              Impact Factor
+              <input id="impactFactor" name="impactFactor" type="text">
+            </label>
+
+            <label>
+              Summary (KO)
+              <textarea id="summaryKo" name="summaryKo" rows="5"></textarea>
+            </label>
+
+            <label>
+              Abstract (KO)
+              <textarea id="abstractKo" name="abstractKo" rows="7"></textarea>
             </label>
           </form>
+          <p id="status-message" class="status-message" role="status"></p>
         </section>
       </div>
     </main>

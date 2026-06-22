@@ -59,7 +59,9 @@ h1 {
 
 .app-header p,
 .count,
-label {
+label,
+.empty-state,
+.status-message {
   color: var(--muted);
 }
 
@@ -139,6 +141,11 @@ button:active {
   transform: translateY(1px);
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 #save-paper,
 #import-doi {
   border-color: var(--accent-dark);
@@ -194,6 +201,11 @@ h2 {
   padding: 0;
 }
 
+.empty-state {
+  margin: 14px 0 0;
+  font-size: 0.9rem;
+}
+
 .paper-list li {
   margin-bottom: 8px;
 }
@@ -224,6 +236,22 @@ h2 {
   font-size: 0.85rem;
 }
 
+.paper-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.paper-tags span {
+  border: 1px solid #d8d4c8;
+  border-radius: 999px;
+  background: #f5f0e6;
+  color: var(--muted);
+  font-size: 0.75rem;
+  padding: 1px 7px;
+}
+
 .paper-form {
   display: grid;
   gap: 14px;
@@ -232,8 +260,14 @@ h2 {
 
 .form-row {
   display: grid;
-  grid-template-columns: 140px 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
+}
+
+.status-message {
+  min-height: 1.3em;
+  margin-top: 12px;
+  font-size: 0.9rem;
 }
 
 @media (max-width: 760px) {
