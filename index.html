@@ -47,6 +47,11 @@
               <button type="button" id="new-paper">New paper</button>
               <button type="button" id="save-paper">Save</button>
               <button type="button" id="delete-paper">Delete</button>
+              <button type="button" id="copy-chatgpt-prompt">Copy ChatGPT Prompt</button>
+              <button type="button" id="paste-chatgpt-markdown">Paste ChatGPT Markdown</button>
+              <button type="button" id="export-json">Export JSON</button>
+              <button type="button" id="import-json">Import JSON</button>
+              <input id="import-file" type="file" accept="application/json,.json" hidden>
             </div>
           </div>
 
@@ -106,6 +111,11 @@
             </label>
 
             <label>
+              Original Abstract
+              <textarea id="abstractOriginal" name="abstractOriginal" rows="5"></textarea>
+            </label>
+
+            <label>
               Aim (KO)
               <textarea id="aimKo" name="aimKo" rows="4"></textarea>
             </label>
@@ -139,11 +149,40 @@
               Abstract (KO)
               <textarea id="abstractKo" name="abstractKo" rows="7"></textarea>
             </label>
+
+            <section class="json-panel" aria-label="ChatGPT JSON import">
+              <div class="section-heading compact-heading">
+                <h2>ChatGPT JSON Paste Import</h2>
+                <button type="button" id="apply-chatgpt-json">Apply JSON to current paper</button>
+              </div>
+              <textarea id="chatgpt-json" rows="10" placeholder="Paste ChatGPT-generated JSON here"></textarea>
+            </section>
           </form>
           <p id="status-message" class="status-message" role="status"></p>
         </section>
       </div>
     </main>
+
+    <div id="markdown-modal" class="modal-backdrop" hidden>
+      <section class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="markdown-modal-title">
+        <div class="section-heading compact-heading">
+          <h2 id="markdown-modal-title">Paste ChatGPT Markdown</h2>
+          <button type="button" id="cancel-markdown-import">Cancel</button>
+        </div>
+
+        <label>
+          ChatGPT 12-section markdown
+          <textarea id="chatgpt-markdown" rows="16" placeholder="Paste the numbered ChatGPT markdown summary here"></textarea>
+        </label>
+
+        <div class="button-row modal-actions">
+          <button type="button" id="parse-markdown-preview">Parse Preview</button>
+          <button type="button" id="import-markdown-current">Import to Current Record</button>
+        </div>
+
+        <div id="markdown-preview" class="markdown-preview" aria-live="polite"></div>
+      </section>
+    </div>
 
     <script src="app.js"></script>
   </body>

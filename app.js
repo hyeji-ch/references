@@ -12,6 +12,7 @@ const schemaFields = [
   "title",
   "journalInfo",
   "doi",
+  "abstractOriginal",
   "aimKo",
   "resultKo",
   "methodKo",
@@ -19,6 +20,7 @@ const schemaFields = [
   "impactFactor",
   "summaryKo",
   "abstractKo",
+  "rawMarkdown",
   "createdAt",
   "updatedAt"
 ];
@@ -27,6 +29,24 @@ const stringFields = schemaFields.filter((field) => field !== "tags");
 const searchFields = [
   "customTitle",
   "referenceNature",
+  "nickname",
+  "title",
+  "journalInfo",
+  "doi",
+  "abstractOriginal",
+  "aimKo",
+  "resultKo",
+  "methodKo",
+  "noteKo",
+  "impactFactor",
+  "summaryKo",
+  "abstractKo",
+  "rawMarkdown"
+];
+
+const chatgptJsonFields = [
+  "referenceNature",
+  "tags",
   "nickname",
   "title",
   "journalInfo",
@@ -49,13 +69,15 @@ const samplePaper = {
   title: "Attention Is All You Need",
   journalInfo: "Advances in Neural Information Processing Systems, 2017",
   doi: "10.48550/arXiv.1706.03762",
-  aimKo: "Sample aim note.",
-  resultKo: "Sample result note.",
-  methodKo: "Sample method note.",
+  abstractOriginal: "",
+  aimKo: "Generate this section with ChatGPT and paste/import the result.",
+  resultKo: "Generate this section with ChatGPT and paste/import the result.",
+  methodKo: "Generate this section with ChatGPT and paste/import the result.",
   noteKo: "Hardcoded starter record. Edit and save it to persist your own notes.",
   impactFactor: "",
-  summaryKo: "Sample summary note.",
-  abstractKo: "Sample abstract note.",
+  summaryKo: "Generate this section with ChatGPT and paste/import the result.",
+  abstractKo: "Generate this section with ChatGPT and paste/import the result.",
+  rawMarkdown: "",
   createdAt: new Date("2017-06-12T00:00:00.000Z").toISOString(),
   updatedAt: new Date("2017-06-12T00:00:00.000Z").toISOString()
 };
@@ -70,9 +92,14 @@ const paperCount = document.querySelector("#paper-count");
 const emptyList = document.querySelector("#empty-list");
 const searchInput = document.querySelector("#search-input");
 const doiInput = document.querySelector("#doi-input");
+const importFile = document.querySelector("#import-file");
 const statusMessage = document.querySelector("#status-message");
 const deleteButton = document.querySelector("#delete-paper");
 const importDoiButton = document.querySelector("#import-doi");
+const chatgptJsonInput = document.querySelector("#chatgpt-json");
+const markdownModal = document.querySelector("#markdown-modal");
+const markdownInput = document.querySelector("#chatgpt-markdown");
+const markdownPreview = document.querySelector("#markdown-preview");
 
 const formFields = {
   id: document.querySelector("#paper-id"),
@@ -83,6 +110,7 @@ const formFields = {
   title: document.querySelector("#paper-title"),
   journalInfo: document.querySelector("#journalInfo"),
   doi: document.querySelector("#paper-doi"),
+  abstractOriginal: document.querySelector("#abstractOriginal"),
   aimKo: document.querySelector("#aimKo"),
   resultKo: document.querySelector("#resultKo"),
   methodKo: document.querySelector("#methodKo"),
@@ -154,6 +182,11 @@ function createIndexedDbRepository(db) {
         store.put(normalizePaper(paper));
       });
     },
+    saveMany(records) {
+      return withStore("readwrite", (store) => {
+        records.forEach((paper) => store.put(normalizePaper(paper)));
+      });
+    },
     delete(id) {
       return withStore("readwrite", (store) => {
         store.delete(id);
@@ -189,6 +222,19 @@ function createLocalStorageRepository() {
       } else {
         records.push(normalizePaper(paper));
       }
+      write(records);
+    },
+    async saveMany(importedRecords) {
+      const records = read();
+      importedRecords.forEach((paper) => {
+        const normalized = normalizePaper(paper);
+        const index = records.findIndex((record) => record.id === normalized.id);
+        if (index >= 0) {
+          records[index] = normalized;
+        } else {
+          records.push(normalized);
+        }
+      });
       write(records);
     },
     async delete(id) {
@@ -239,6 +285,276 @@ function parseTags(value) {
     .filter(Boolean);
 }
 
+function setModalOpen(isOpen) {
+  markdownModal.hidden = !isOpen;
+  if (isOpen) {
+    markdownInput.focus();
+  }
+}
+
+function removeMarkdownReferenceNoise(value) {
+  return value
+    .replace(/^[ \t]*\[\d+\]:\s+\S+.*$/gm, "")
+    .replace(/\[([^\]]+)\]\[\d+\]/g, "$1")
+    .replace(/\[\d+\]/g, "")
+    .trim();
+}
+
+function stripMarkdownHeadingText(value) {
+  return value
+    .replace(/^\s*(?:[-*+]\s*)?(?:#{1,6}\s*)?(?:\*\*)?/, "")
+    .replace(/(?:\*\*)?\s*$/, "")
+    .trim();
+}
+
+function parseChatGptMarkdown(markdown) {
+  const cleaned = removeMarkdownReferenceNoise(markdown || "");
+  const sections = {};
+  let currentNumber = null;
+
+  cleaned.split(/\r?\n/).forEach((line) => {
+    const headingMatch = line.match(/^\s*(?:[-*+]\s*)?(?:#{1,6}\s*)?(?:\*\*)?(0|[1-9]|1[0-2])\.\s+(.+?)(?:\*\*)?\s*$/);
+
+    if (headingMatch) {
+      currentNumber = headingMatch[1];
+      sections[currentNumber] = [];
+      return;
+    }
+
+    if (currentNumber !== null) {
+      sections[currentNumber].push(line);
+    }
+  });
+
+  const result = {};
+  Object.entries(sections).forEach(([number, lines]) => {
+    result[number] = removeMarkdownReferenceNoise(lines.join("\n")).trim();
+  });
+
+  return result;
+}
+
+function cleanSectionValue(value) {
+  return removeMarkdownReferenceNoise(value || "")
+    .trim();
+}
+
+function extractTagsFromSection(value, allowTextFallback) {
+  const hashtagMatches = value.match(/#[A-Za-z0-9_\-\u3131-\u318e\uac00-\ud7a3]+/g);
+
+  if (hashtagMatches && hashtagMatches.length > 0) {
+    return [...new Set(hashtagMatches)];
+  }
+
+  const cleaned = cleanSectionValue(value);
+  if (!cleaned) {
+    return [];
+  }
+
+  return allowTextFallback && confirm("No hashtags were found in section 1. Store the cleaned section text as one tag?")
+    ? [cleaned]
+    : [];
+}
+
+function extractDoiFromText(value) {
+  const normalized = normalizeDoiInput(value || "");
+  return isValidDoi(normalized) ? normalized : "";
+}
+
+function shortKeyTopicFromTitle(title) {
+  const cleaned = cleanText(title)
+    .replace(/[.:;!?].*$/, "")
+    .replace(/\b(a|an|the|of|for|with|using|in|on|by|and|or|to|from)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const words = cleaned.split(" ").filter(Boolean);
+  return words.slice(0, 5).join(" ") || cleanText(title).split(/\s+/).slice(0, 5).join(" ");
+}
+
+function buildCustomTitleFromMarkdownRecord(record) {
+  const topic = shortKeyTopicFromTitle(record.title);
+  if (record.nickname && topic) {
+    return `${record.nickname} — ${topic}`;
+  }
+  return record.nickname || topic || "";
+}
+
+function sectionsToPaperFields(sections, rawMarkdown, options = {}) {
+  const record = {
+    referenceNature: cleanSectionValue(sections["0"] || ""),
+    tags: extractTagsFromSection(sections["1"] || "", Boolean(options.confirmTagFallback)),
+    nickname: cleanSectionValue(sections["2"] || ""),
+    title: cleanSectionValue(sections["3"] || ""),
+    journalInfo: cleanSectionValue(sections["4"] || ""),
+    doi: extractDoiFromText(sections["5"] || ""),
+    aimKo: cleanSectionValue(sections["6"] || ""),
+    resultKo: cleanSectionValue(sections["7"] || ""),
+    methodKo: cleanSectionValue(sections["8"] || ""),
+    noteKo: cleanSectionValue(sections["9"] || ""),
+    impactFactor: cleanSectionValue(sections["10"] || ""),
+    summaryKo: cleanSectionValue(sections["11"] || ""),
+    abstractKo: cleanSectionValue(sections["12"] || ""),
+    rawMarkdown: rawMarkdown || ""
+  };
+
+  record.customTitle = buildCustomTitleFromMarkdownRecord(record);
+  return record;
+}
+
+function renderMarkdownPreview(record, foundCount) {
+  markdownPreview.innerHTML = "";
+
+  const warning = document.createElement("p");
+  warning.className = "status-message";
+  const messages = [];
+
+  if (foundCount < 8) {
+    messages.push("This markdown does not look like a complete 12-section literature summary.");
+  }
+  if (!record.title || !record.doi) {
+    messages.push("Warning: title or DOI is missing. Import is still allowed.");
+  }
+  warning.textContent = messages.join(" ");
+  markdownPreview.appendChild(warning);
+
+  [
+    ["referenceNature", record.referenceNature],
+    ["tags", record.tags.join(", ")],
+    ["nickname", record.nickname],
+    ["title", record.title],
+    ["journalInfo", record.journalInfo],
+    ["doi", record.doi],
+    ["aimKo", record.aimKo],
+    ["resultKo", record.resultKo],
+    ["methodKo", record.methodKo],
+    ["noteKo", record.noteKo],
+    ["impactFactor", record.impactFactor],
+    ["summaryKo", record.summaryKo],
+    ["abstractKo", record.abstractKo]
+  ].forEach(([label, value]) => {
+    const row = document.createElement("div");
+    const key = document.createElement("div");
+    const body = document.createElement("div");
+    row.className = "preview-row";
+    key.className = "preview-label";
+    body.className = "preview-value";
+    key.textContent = label;
+    body.textContent = value || "(empty)";
+    row.appendChild(key);
+    row.appendChild(body);
+    markdownPreview.appendChild(row);
+  });
+}
+
+function parseMarkdownForImport(options = {}) {
+  try {
+    const sections = parseChatGptMarkdown(markdownInput.value);
+    const foundCount = Object.keys(sections).length;
+    const record = sectionsToPaperFields(sections, markdownInput.value, options);
+    renderMarkdownPreview(record, foundCount);
+
+    if (foundCount < 8) {
+      setStatus("This markdown does not look like a complete 12-section literature summary.");
+    } else if (!record.title || !record.doi) {
+      setStatus("Warning: title or DOI is missing. Import is still allowed.");
+    } else {
+      setStatus("Markdown parsed. Review the preview before importing.");
+    }
+
+    return { record, foundCount };
+  } catch (error) {
+    console.error("Markdown parser error.", error);
+    setStatus("Markdown parser error. Check the pasted content.");
+    return null;
+  }
+}
+
+function markdownOverwriteFields() {
+  return [
+    "customTitle",
+    "referenceNature",
+    "tags",
+    "nickname",
+    "title",
+    "journalInfo",
+    "doi",
+    "aimKo",
+    "resultKo",
+    "methodKo",
+    "noteKo",
+    "impactFactor",
+    "summaryKo",
+    "abstractKo",
+    "rawMarkdown"
+  ];
+}
+
+function hasMarkdownOverwriteConflicts(existing, incoming) {
+  return markdownOverwriteFields().some((field) => {
+    const currentValue = field === "tags" ? existing.tags.join(", ") : existing[field];
+    const incomingValue = field === "tags" ? incoming.tags.join(", ") : incoming[field];
+    return currentValue && incomingValue && currentValue !== incomingValue;
+  });
+}
+
+async function importMarkdownToCurrentRecord() {
+  const parsed = parseMarkdownForImport({ confirmTagFallback: true });
+  if (!parsed) {
+    return;
+  }
+
+  const incoming = parsed.record;
+  const isSavedCurrent = currentPaper && papers.some((paper) => paper.id === currentPaper.id);
+  const duplicate = incoming.doi
+    ? papers.find((paper) => paper.doi.toLowerCase() === incoming.doi.toLowerCase() && (!currentPaper || paper.id !== currentPaper.id))
+    : null;
+
+  if (duplicate) {
+    const shouldOpen = confirm("A saved record with this DOI already exists. Open the existing record instead of creating a duplicate?");
+    if (shouldOpen) {
+      loadPaperIntoForm(duplicate);
+      renderPaperList();
+      setModalOpen(false);
+      setStatus("Existing DOI record opened.");
+      return;
+    }
+  }
+
+  const existing = isSavedCurrent ? getFormPaper() : blankPaper();
+
+  if (isSavedCurrent && hasMarkdownOverwriteConflicts(existing, incoming)) {
+    const shouldOverwrite = confirm("This markdown will overwrite non-empty fields in the current record. Continue?");
+    if (!shouldOverwrite) {
+      return;
+    }
+  }
+
+  const now = new Date().toISOString();
+  const importedPaper = normalizePaper({
+    ...existing,
+    ...incoming,
+    id: existing.id || generateId(),
+    customTitle: incoming.customTitle || existing.customTitle,
+    createdAt: existing.createdAt || now,
+    updatedAt: now
+  });
+
+  await repository.save(importedPaper);
+  selectedPaperId = importedPaper.id;
+  currentPaper = importedPaper;
+  await refreshFromStorage();
+  setModalOpen(false);
+
+  const warnings = [];
+  if (parsed.foundCount < 8) {
+    warnings.push("This markdown does not look like a complete 12-section literature summary.");
+  }
+  if (!incoming.title || !incoming.doi) {
+    warnings.push("Warning: title or DOI is missing.");
+  }
+  setStatus(warnings.length ? `Record saved. ${warnings.join(" ")}` : "Record saved.");
+}
+
 function getDisplayTitle(paper) {
   return paper.customTitle.trim() || paper.title.trim() || paper.doi.trim() || "Untitled paper";
 }
@@ -257,6 +573,7 @@ function getFormPaper() {
     title: formFields.title.value.trim(),
     journalInfo: formFields.journalInfo.value.trim(),
     doi: formFields.doi.value.trim(),
+    abstractOriginal: formFields.abstractOriginal.value.trim(),
     aimKo: formFields.aimKo.value.trim(),
     resultKo: formFields.resultKo.value.trim(),
     methodKo: formFields.methodKo.value.trim(),
@@ -280,6 +597,7 @@ function loadPaperIntoForm(paper) {
   formFields.title.value = currentPaper.title;
   formFields.journalInfo.value = currentPaper.journalInfo;
   formFields.doi.value = currentPaper.doi;
+  formFields.abstractOriginal.value = currentPaper.abstractOriginal;
   formFields.aimKo.value = currentPaper.aimKo;
   formFields.resultKo.value = currentPaper.resultKo;
   formFields.methodKo.value = currentPaper.methodKo;
@@ -354,12 +672,16 @@ function setStatus(message) {
 }
 
 function normalizeDoiInput(value) {
-  return value
+  const cleaned = value
     .trim()
     .replace(/^https?:\/\/(dx\.)?doi\.org\//i, "")
     .replace(/^doi:\s*/i, "")
     .trim()
-    .replace(/[?#].*$/, "");
+    .replace(/[?#].*$/, "")
+    .replace(/[.,;)\]]+$/, "");
+  const doiMatch = cleaned.match(/10\.\d{4,9}\/\S+/i);
+
+  return doiMatch ? doiMatch[0].replace(/[.,;)\]]+$/, "") : cleaned;
 }
 
 function isValidDoi(value) {
@@ -526,31 +848,6 @@ function mapCrossrefMessage(message, doi) {
   };
 }
 
-function mapOpenAlexWork(work, doi) {
-  const authors = Array.isArray(work.authorships)
-    ? work.authorships.map((authorship) => ({
-        displayName: authorship.author && authorship.author.display_name
-      }))
-    : [];
-  const primaryLocation = work.primary_location || {};
-  const source = primaryLocation.source || {};
-  const biblio = work.biblio || {};
-
-  return {
-    source: "OpenAlex",
-    doi: cleanText(work.doi ? work.doi.replace(/^https?:\/\/doi\.org\//i, "") : doi),
-    title: cleanText(work.title || work.display_name),
-    authors,
-    year: work.publication_year ? String(work.publication_year) : "",
-    journal: cleanText(source.display_name),
-    shortJournal: cleanText(source.abbreviated_title),
-    volume: cleanText(biblio.volume),
-    issue: cleanText(biblio.issue),
-    pages: cleanText(biblio.first_page && biblio.last_page ? `${biblio.first_page}-${biblio.last_page}` : biblio.first_page),
-    abstract: abstractFromInvertedIndex(work.abstract_inverted_index)
-  };
-}
-
 async function fetchJson(url) {
   const response = await fetch(url, {
     headers: {
@@ -566,26 +863,24 @@ async function fetchJson(url) {
 }
 
 async function fetchDoiMetadata(doi) {
-  try {
-    const crossrefData = await fetchJson(`https://api.crossref.org/works/${encodeURIComponent(doi)}`);
-    if (crossrefData && crossrefData.message) {
-      return mapCrossrefMessage(crossrefData.message, doi);
+  const errors = [];
+  const crossrefUrls = [
+    `https://api.crossref.org/works/${doi}`,
+    `https://api.crossref.org/works/${encodeURIComponent(doi)}`
+  ];
+
+  for (const url of crossrefUrls) {
+    try {
+      const crossrefData = await fetchJson(url);
+      if (crossrefData && crossrefData.message) {
+        return mapCrossrefMessage(crossrefData.message, doi);
+      }
+    } catch (error) {
+      errors.push(error.message);
     }
-  } catch (error) {
-    console.warn("Crossref DOI lookup failed.", error);
   }
 
-  try {
-    const openAlexId = encodeURIComponent(`https://doi.org/${doi}`);
-    const openAlexData = await fetchJson(`https://api.openalex.org/works/${openAlexId}`);
-    if (openAlexData && (openAlexData.id || openAlexData.doi)) {
-      return mapOpenAlexWork(openAlexData, doi);
-    }
-  } catch (error) {
-    console.warn("OpenAlex DOI lookup failed.", error);
-  }
-
-  throw new Error("DOI metadata could not be fetched from Crossref or OpenAlex.");
+  throw new Error(errors.join(" | ") || "DOI metadata not found.");
 }
 
 function applyMetadataToForm(metadata) {
@@ -593,6 +888,7 @@ function applyMetadataToForm(metadata) {
   const nickname = formatNickname(metadata.authors, metadata.year);
   const customTitle = nickname ? `${nickname} — key topic` : "";
   const abstract = metadata.abstract || "Abstract not available from metadata source.";
+  const placeholder = "Generate this section with ChatGPT and paste/import the result.";
 
   currentPaper = normalizePaper({
     ...existing,
@@ -601,12 +897,13 @@ function applyMetadataToForm(metadata) {
     nickname,
     referenceNature: formatReferenceNature(metadata),
     journalInfo: formatJournalInfo(metadata),
-    customTitle,
-    abstractKo: abstract,
-    summaryKo: "Summary placeholder. Add Korean summary manually.",
-    aimKo: "Aim placeholder. Add Korean aim manually.",
-    resultKo: "Result placeholder. Add Korean result manually.",
-    methodKo: "Method placeholder. Add Korean method manually.",
+    customTitle: nickname ? `${nickname} - key topic` : "",
+    abstractOriginal: metadata.abstract || "",
+    abstractKo: existing.abstractKo || placeholder,
+    summaryKo: existing.summaryKo || placeholder,
+    aimKo: existing.aimKo || placeholder,
+    resultKo: existing.resultKo || placeholder,
+    methodKo: existing.methodKo || placeholder,
     updatedAt: new Date().toISOString()
   });
   selectedPaperId = currentPaper.id;
@@ -623,21 +920,22 @@ async function importDoiMetadata() {
   }
 
   importDoiButton.disabled = true;
-  setStatus("Fetching DOI metadata from Crossref...");
+  setStatus("Fetching DOI metadata...");
 
   try {
     doiInput.value = normalizedDoi;
     const metadata = await fetchDoiMetadata(normalizedDoi);
 
     if (!metadata.title && !metadata.doi) {
-      setStatus("Missing metadata: the DOI lookup succeeded, but no usable title or DOI was returned.");
+      setStatus("DOI metadata not found.");
       return;
     }
 
     applyMetadataToForm(metadata);
-    setStatus(`Imported DOI metadata from ${metadata.source}. Review the editable fields, then Save.`);
+    setStatus("Metadata imported.");
   } catch (error) {
-    setStatus(`Failed fetch: ${error.message}`);
+    console.error("Failed DOI metadata fetch.", error);
+    setStatus(`DOI metadata not found. ${error.message}`);
   } finally {
     importDoiButton.disabled = false;
   }
@@ -673,7 +971,7 @@ async function saveCurrentPaper() {
   currentPaper = paper;
   selectedPaperId = paper.id;
   await refreshFromStorage();
-  setStatus("Paper saved.");
+  setStatus("Record saved.");
 }
 
 async function deleteCurrentPaper() {
@@ -691,6 +989,212 @@ async function deleteCurrentPaper() {
   selectedPaperId = "";
   await refreshFromStorage();
   setStatus("Paper deleted.");
+}
+
+function buildChatGptPrompt() {
+  const paper = getFormPaper();
+  const context = {
+    doi: paper.doi,
+    title: paper.title,
+    journalInfo: paper.journalInfo,
+    abstractOriginal: paper.abstractOriginal
+  };
+
+  return [
+    "You are helping create a personal literature database record.",
+    "Generate valid JSON only. Do not include Markdown fences or commentary.",
+    "Use Korean for fields ending in Ko.",
+    "Do not invent bibliographic metadata if it is missing; keep missing values as empty strings.",
+    "Return exactly these fields:",
+    "0. referenceNature",
+    "1. tags",
+    "2. nickname",
+    "3. title",
+    "4. journalInfo",
+    "5. doi",
+    "6. aimKo",
+    "7. resultKo",
+    "8. methodKo",
+    "9. noteKo",
+    "10. impactFactor",
+    "11. summaryKo",
+    "12. abstractKo",
+    "",
+    "JSON shape:",
+    JSON.stringify({
+      referenceNature: "",
+      tags: [],
+      nickname: "",
+      title: "",
+      journalInfo: "",
+      doi: "",
+      aimKo: "",
+      resultKo: "",
+      methodKo: "",
+      noteKo: "",
+      impactFactor: "",
+      summaryKo: "",
+      abstractKo: ""
+    }, null, 2),
+    "",
+    "Source metadata:",
+    JSON.stringify(context, null, 2)
+  ].join("\n");
+}
+
+async function copyChatGptPrompt() {
+  const prompt = buildChatGptPrompt();
+
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(prompt);
+    } else {
+      const temporary = document.createElement("textarea");
+      temporary.value = prompt;
+      temporary.setAttribute("readonly", "");
+      temporary.style.position = "fixed";
+      temporary.style.left = "-9999px";
+      document.body.appendChild(temporary);
+      temporary.select();
+      document.execCommand("copy");
+      temporary.remove();
+    }
+    setStatus("ChatGPT prompt copied.");
+  } catch (error) {
+    console.error("Failed to copy ChatGPT prompt.", error);
+    setStatus("Could not copy prompt. Select and copy manually from the generated text.");
+  }
+}
+
+function normalizeChatGptJsonRecord(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("Expected a JSON object.");
+  }
+
+  const normalized = {};
+  chatgptJsonFields.forEach((field) => {
+    if (field === "tags") {
+      if (Array.isArray(value.tags)) {
+        normalized.tags = value.tags.map(String).map((tag) => tag.trim()).filter(Boolean);
+      } else if (typeof value.tags === "string") {
+        normalized.tags = parseTags(value.tags);
+      } else {
+        normalized.tags = [];
+      }
+      return;
+    }
+
+    normalized[field] = typeof value[field] === "string" ? value[field].trim() : "";
+  });
+
+  return normalized;
+}
+
+function hasOverwriteConflicts(existing, incoming) {
+  return chatgptJsonFields.some((field) => {
+    const currentValue = field === "tags" ? existing.tags.join(", ") : existing[field];
+    const incomingValue = field === "tags" ? incoming.tags.join(", ") : incoming[field];
+    return currentValue && incomingValue && currentValue !== incomingValue;
+  });
+}
+
+function applyChatGptJsonToCurrentPaper() {
+  let parsed;
+
+  try {
+    parsed = JSON.parse(chatgptJsonInput.value.trim());
+  } catch (error) {
+    console.error("Failed to parse ChatGPT JSON.", error);
+    setStatus("Invalid JSON.");
+    return;
+  }
+
+  try {
+    const incoming = normalizeChatGptJsonRecord(parsed);
+    const existing = getFormPaper();
+
+    if (hasOverwriteConflicts(existing, incoming) && !confirm("This JSON will overwrite existing edited fields. Apply it anyway?")) {
+      return;
+    }
+
+    currentPaper = normalizePaper({
+      ...existing,
+      ...incoming,
+      id: existing.id,
+      createdAt: existing.createdAt,
+      updatedAt: new Date().toISOString()
+    });
+    selectedPaperId = currentPaper.id;
+    loadPaperIntoForm(currentPaper);
+    renderPaperList();
+    setStatus("ChatGPT JSON imported. Review, then Save.");
+  } catch (error) {
+    console.error("Invalid ChatGPT JSON shape.", error);
+    setStatus("Invalid JSON.");
+  }
+}
+
+function validateExportedRecords(value) {
+  const records = Array.isArray(value) ? value : value && Array.isArray(value.papers) ? value.papers : null;
+
+  if (!records) {
+    throw new Error("Expected an array of paper records or an object with a papers array.");
+  }
+
+  return records.map((record, index) => {
+    if (!record || typeof record !== "object" || Array.isArray(record)) {
+      throw new Error(`Record ${index + 1} is not an object.`);
+    }
+
+    if (record.tags && !Array.isArray(record.tags) && typeof record.tags !== "string") {
+      throw new Error(`Record ${index + 1} has invalid tags.`);
+    }
+
+    return normalizePaper(record);
+  });
+}
+
+function exportJson() {
+  const data = JSON.stringify(papers.map(normalizePaper), null, 2);
+  const blob = new Blob([data], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = `literature-doi-database-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  setStatus("Exported JSON file.");
+}
+
+function importJsonFile(file) {
+  const reader = new FileReader();
+
+  reader.onload = async () => {
+    try {
+      const parsed = JSON.parse(reader.result);
+      const importedRecords = validateExportedRecords(parsed);
+      await repository.saveMany(importedRecords);
+      selectedPaperId = importedRecords[0] ? importedRecords[0].id : selectedPaperId;
+      await refreshFromStorage();
+      setStatus(`Imported ${importedRecords.length} ${importedRecords.length === 1 ? "record" : "records"}.`);
+    } catch (error) {
+      console.error("Failed to import JSON file.", error);
+      setStatus("Invalid JSON.");
+    } finally {
+      importFile.value = "";
+    }
+  };
+
+  reader.onerror = () => {
+    console.error("Failed to read JSON import file.", reader.error);
+    setStatus("Invalid JSON.");
+    importFile.value = "";
+  };
+
+  reader.readAsText(file);
 }
 
 paperList.addEventListener("click", (event) => {
@@ -727,6 +1231,53 @@ document.querySelector("#save-paper").addEventListener("click", () => {
 
 document.querySelector("#delete-paper").addEventListener("click", () => {
   deleteCurrentPaper().catch((error) => setStatus(`Delete failed: ${error.message}`));
+});
+
+document.querySelector("#copy-chatgpt-prompt").addEventListener("click", () => {
+  copyChatGptPrompt();
+});
+
+document.querySelector("#paste-chatgpt-markdown").addEventListener("click", () => {
+  markdownPreview.innerHTML = "";
+  setModalOpen(true);
+});
+
+document.querySelector("#parse-markdown-preview").addEventListener("click", () => {
+  parseMarkdownForImport();
+});
+
+document.querySelector("#import-markdown-current").addEventListener("click", () => {
+  importMarkdownToCurrentRecord().catch((error) => {
+    console.error("Markdown import failed.", error);
+    setStatus("Markdown import failed.");
+  });
+});
+
+document.querySelector("#cancel-markdown-import").addEventListener("click", () => {
+  setModalOpen(false);
+});
+
+markdownModal.addEventListener("click", (event) => {
+  if (event.target === markdownModal) {
+    setModalOpen(false);
+  }
+});
+
+document.querySelector("#apply-chatgpt-json").addEventListener("click", () => {
+  applyChatGptJsonToCurrentPaper();
+});
+
+document.querySelector("#export-json").addEventListener("click", exportJson);
+
+document.querySelector("#import-json").addEventListener("click", () => {
+  importFile.click();
+});
+
+importFile.addEventListener("change", () => {
+  const file = importFile.files[0];
+  if (file) {
+    importJsonFile(file);
+  }
 });
 
 createRepository()
