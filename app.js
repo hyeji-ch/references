@@ -70,9 +70,9 @@ const paperCount = document.querySelector("#paper-count");
 const emptyList = document.querySelector("#empty-list");
 const searchInput = document.querySelector("#search-input");
 const doiInput = document.querySelector("#doi-input");
-const importFile = document.querySelector("#import-file");
 const statusMessage = document.querySelector("#status-message");
 const deleteButton = document.querySelector("#delete-paper");
+const importDoiButton = document.querySelector("#import-doi");
 
 const formFields = {
   id: document.querySelector("#paper-id"),
@@ -154,11 +154,6 @@ function createIndexedDbRepository(db) {
         store.put(normalizePaper(paper));
       });
     },
-    saveMany(records) {
-      return withStore("readwrite", (store) => {
-        records.forEach((paper) => store.put(normalizePaper(paper)));
-      });
-    },
     delete(id) {
       return withStore("readwrite", (store) => {
         store.delete(id);
@@ -194,19 +189,6 @@ function createLocalStorageRepository() {
       } else {
         records.push(normalizePaper(paper));
       }
-      write(records);
-    },
-    async saveMany(importedRecords) {
-      const records = read();
-      importedRecords.forEach((paper) => {
-        const normalized = normalizePaper(paper);
-        const index = records.findIndex((record) => record.id === normalized.id);
-        if (index >= 0) {
-          records[index] = normalized;
-        } else {
-          records.push(normalized);
-        }
-      });
       write(records);
     },
     async delete(id) {
@@ -371,6 +353,296 @@ function setStatus(message) {
   statusMessage.textContent = message;
 }
 
+function normalizeDoiInput(value) {
+  return value
+    .trim()
+    .replace(/^https?:\/\/(dx\.)?doi\.org\//i, "")
+    .replace(/^doi:\s*/i, "")
+    .trim()
+    .replace(/[?#].*$/, "");
+}
+
+function isValidDoi(value) {
+  return /^10\.\d{4,9}\/\S+$/i.test(value);
+}
+
+function cleanText(value) {
+  if (!value) {
+    return "";
+  }
+
+  return String(value)
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function firstText(value) {
+  if (Array.isArray(value)) {
+    return cleanText(value[0] || "");
+  }
+
+  return cleanText(value || "");
+}
+
+function getPublishedYear(dateParts) {
+  return Array.isArray(dateParts) && Array.isArray(dateParts[0]) && dateParts[0][0]
+    ? String(dateParts[0][0])
+    : "";
+}
+
+function formatPersonName(author) {
+  const given = cleanText(author.given || author.firstName || "");
+  const family = cleanText(author.family || author.lastName || author.displayName || author.name || "");
+  return [given, family].filter(Boolean).join(" ") || family || given;
+}
+
+function formatShortAuthorName(author) {
+  const explicitName = cleanText(author.family || author.lastName || author.name);
+
+  if (explicitName) {
+    return explicitName;
+  }
+
+  const displayName = cleanText(author.displayName || formatPersonName(author));
+  const parts = displayName.split(/\s+/).filter(Boolean);
+  return parts.length > 1 ? parts[parts.length - 1] : displayName;
+}
+
+function formatNickname(authors, year) {
+  const names = authors.map(formatShortAuthorName).filter(Boolean);
+
+  if (names.length === 0 || !year) {
+    return "";
+  }
+
+  if (names.length === 1) {
+    return `${names[0]} (${year})`;
+  }
+
+  if (names.length === 2) {
+    return `${names[0]} & ${names[1]} (${year})`;
+  }
+
+  return `${names[0]} et al. (${year})`;
+}
+
+function formatNatureAuthors(authors) {
+  const names = authors.map(formatShortAuthorName).filter(Boolean);
+
+  if (names.length <= 2) {
+    return names.join(" & ");
+  }
+
+  return `${names[0]} et al.`;
+}
+
+function formatReferenceNature(metadata) {
+  const parts = [];
+  const authorText = formatNatureAuthors(metadata.authors);
+  const journal = metadata.shortJournal || metadata.journal;
+  const volume = metadata.volume;
+  const pages = metadata.pages;
+  const year = metadata.year;
+
+  if (authorText) {
+    parts.push(`${authorText}.`);
+  }
+
+  if (metadata.title) {
+    parts.push(`${metadata.title}.`);
+  }
+
+  if (journal) {
+    let journalPart = journal;
+    if (volume) {
+      journalPart += ` ${volume}`;
+    }
+    if (pages) {
+      journalPart += `, ${pages}`;
+    }
+    if (year) {
+      journalPart += ` (${year})`;
+    }
+    parts.push(`${journalPart}.`);
+  } else if (year) {
+    parts.push(`(${year}).`);
+  }
+
+  return parts.join(" ");
+}
+
+function formatJournalInfo(metadata) {
+  const journal = metadata.journal;
+  const volumeIssue = metadata.volume
+    ? `${metadata.volume}${metadata.issue ? `(${metadata.issue})` : ""}`
+    : "";
+
+  return [journal, volumeIssue, metadata.pages, metadata.year].filter(Boolean).join(", ");
+}
+
+function abstractFromInvertedIndex(index) {
+  if (!index || typeof index !== "object") {
+    return "";
+  }
+
+  const words = [];
+  Object.entries(index).forEach(([word, positions]) => {
+    if (Array.isArray(positions)) {
+      positions.forEach((position) => {
+        words[position] = word;
+      });
+    }
+  });
+
+  return cleanText(words.filter(Boolean).join(" "));
+}
+
+function mapCrossrefMessage(message, doi) {
+  const authors = Array.isArray(message.author)
+    ? message.author.map((author) => ({
+        given: author.given,
+        family: author.family
+      }))
+    : [];
+  const year =
+    getPublishedYear(message.published && message.published["date-parts"]) ||
+    getPublishedYear(message["published-print"] && message["published-print"]["date-parts"]) ||
+    getPublishedYear(message["published-online"] && message["published-online"]["date-parts"]) ||
+    getPublishedYear(message.issued && message.issued["date-parts"]);
+
+  return {
+    source: "Crossref",
+    doi: cleanText(message.DOI || doi),
+    title: firstText(message.title),
+    authors,
+    year,
+    journal: firstText(message["container-title"]),
+    shortJournal: firstText(message["short-container-title"]),
+    volume: cleanText(message.volume),
+    issue: cleanText(message.issue),
+    pages: cleanText(message.page),
+    abstract: cleanText(message.abstract)
+  };
+}
+
+function mapOpenAlexWork(work, doi) {
+  const authors = Array.isArray(work.authorships)
+    ? work.authorships.map((authorship) => ({
+        displayName: authorship.author && authorship.author.display_name
+      }))
+    : [];
+  const primaryLocation = work.primary_location || {};
+  const source = primaryLocation.source || {};
+  const biblio = work.biblio || {};
+
+  return {
+    source: "OpenAlex",
+    doi: cleanText(work.doi ? work.doi.replace(/^https?:\/\/doi\.org\//i, "") : doi),
+    title: cleanText(work.title || work.display_name),
+    authors,
+    year: work.publication_year ? String(work.publication_year) : "",
+    journal: cleanText(source.display_name),
+    shortJournal: cleanText(source.abbreviated_title),
+    volume: cleanText(biblio.volume),
+    issue: cleanText(biblio.issue),
+    pages: cleanText(biblio.first_page && biblio.last_page ? `${biblio.first_page}-${biblio.last_page}` : biblio.first_page),
+    abstract: abstractFromInvertedIndex(work.abstract_inverted_index)
+  };
+}
+
+async function fetchJson(url) {
+  const response = await fetch(url, {
+    headers: {
+      Accept: "application/json"
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+
+  return response.json();
+}
+
+async function fetchDoiMetadata(doi) {
+  try {
+    const crossrefData = await fetchJson(`https://api.crossref.org/works/${encodeURIComponent(doi)}`);
+    if (crossrefData && crossrefData.message) {
+      return mapCrossrefMessage(crossrefData.message, doi);
+    }
+  } catch (error) {
+    console.warn("Crossref DOI lookup failed.", error);
+  }
+
+  try {
+    const openAlexId = encodeURIComponent(`https://doi.org/${doi}`);
+    const openAlexData = await fetchJson(`https://api.openalex.org/works/${openAlexId}`);
+    if (openAlexData && (openAlexData.id || openAlexData.doi)) {
+      return mapOpenAlexWork(openAlexData, doi);
+    }
+  } catch (error) {
+    console.warn("OpenAlex DOI lookup failed.", error);
+  }
+
+  throw new Error("DOI metadata could not be fetched from Crossref or OpenAlex.");
+}
+
+function applyMetadataToForm(metadata) {
+  const existing = getFormPaper();
+  const nickname = formatNickname(metadata.authors, metadata.year);
+  const customTitle = nickname ? `${nickname} — key topic` : "";
+  const abstract = metadata.abstract || "Abstract not available from metadata source.";
+
+  currentPaper = normalizePaper({
+    ...existing,
+    doi: metadata.doi || "",
+    title: metadata.title || "",
+    nickname,
+    referenceNature: formatReferenceNature(metadata),
+    journalInfo: formatJournalInfo(metadata),
+    customTitle,
+    abstractKo: abstract,
+    summaryKo: "Summary placeholder. Add Korean summary manually.",
+    aimKo: "Aim placeholder. Add Korean aim manually.",
+    resultKo: "Result placeholder. Add Korean result manually.",
+    methodKo: "Method placeholder. Add Korean method manually.",
+    updatedAt: new Date().toISOString()
+  });
+  selectedPaperId = currentPaper.id;
+  loadPaperIntoForm(currentPaper);
+  renderPaperList();
+}
+
+async function importDoiMetadata() {
+  const normalizedDoi = normalizeDoiInput(doiInput.value || formFields.doi.value);
+
+  if (!normalizedDoi || !isValidDoi(normalizedDoi)) {
+    setStatus("Invalid DOI. Enter a DOI like 10.xxxx/example, with or without a doi.org prefix.");
+    return;
+  }
+
+  importDoiButton.disabled = true;
+  setStatus("Fetching DOI metadata from Crossref...");
+
+  try {
+    doiInput.value = normalizedDoi;
+    const metadata = await fetchDoiMetadata(normalizedDoi);
+
+    if (!metadata.title && !metadata.doi) {
+      setStatus("Missing metadata: the DOI lookup succeeded, but no usable title or DOI was returned.");
+      return;
+    }
+
+    applyMetadataToForm(metadata);
+    setStatus(`Imported DOI metadata from ${metadata.source}. Review the editable fields, then Save.`);
+  } catch (error) {
+    setStatus(`Failed fetch: ${error.message}`);
+  } finally {
+    importDoiButton.disabled = false;
+  }
+}
+
 async function refreshFromStorage() {
   papers = await repository.getAll();
 
@@ -382,42 +654,6 @@ async function refreshFromStorage() {
   const selected = papers.find((paper) => paper.id === selectedPaperId) || papers[0] || blankPaper();
   loadPaperIntoForm(selected);
   renderPaperList();
-}
-
-function validateImportedRecords(value) {
-  const records = Array.isArray(value) ? value : value && Array.isArray(value.papers) ? value.papers : null;
-
-  if (!records) {
-    throw new Error("Imported JSON must be an array of paper records or an object with a papers array.");
-  }
-
-  records.forEach((record, index) => {
-    if (!record || typeof record !== "object" || Array.isArray(record)) {
-      throw new Error(`Record ${index + 1} is not an object.`);
-    }
-
-    schemaFields.forEach((field) => {
-      if (!(field in record)) {
-        throw new Error(`Record ${index + 1} is missing "${field}".`);
-      }
-    });
-
-    stringFields.forEach((field) => {
-      if (typeof record[field] !== "string") {
-        throw new Error(`Record ${index + 1} field "${field}" must be a string.`);
-      }
-    });
-
-    if (!Array.isArray(record.tags) || record.tags.some((tag) => typeof tag !== "string")) {
-      throw new Error(`Record ${index + 1} field "tags" must be an array of strings.`);
-    }
-
-    if (!record.id.trim()) {
-      throw new Error(`Record ${index + 1} must have a non-empty id.`);
-    }
-  });
-
-  return records.map(normalizePaper);
 }
 
 async function saveCurrentPaper() {
@@ -457,47 +693,6 @@ async function deleteCurrentPaper() {
   setStatus("Paper deleted.");
 }
 
-function exportJson() {
-  const data = JSON.stringify(papers.map(normalizePaper), null, 2);
-  const blob = new Blob([data], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-
-  link.href = url;
-  link.download = `literature-doi-database-${new Date().toISOString().slice(0, 10)}.json`;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-  setStatus("Exported JSON file.");
-}
-
-function importJsonFile(file) {
-  const reader = new FileReader();
-
-  reader.onload = async () => {
-    try {
-      const parsed = JSON.parse(reader.result);
-      const importedRecords = validateImportedRecords(parsed);
-      await repository.saveMany(importedRecords);
-      selectedPaperId = importedRecords[0] ? importedRecords[0].id : selectedPaperId;
-      await refreshFromStorage();
-      setStatus(`Imported ${importedRecords.length} ${importedRecords.length === 1 ? "record" : "records"}.`);
-    } catch (error) {
-      setStatus(`Import failed: ${error.message}`);
-    } finally {
-      importFile.value = "";
-    }
-  };
-
-  reader.onerror = () => {
-    setStatus("Import failed: could not read the selected file.");
-    importFile.value = "";
-  };
-
-  reader.readAsText(file);
-}
-
 paperList.addEventListener("click", (event) => {
   const selectedButton = event.target.closest("button[data-paper-id]");
   if (!selectedButton) {
@@ -523,11 +718,7 @@ document.querySelector("#new-paper").addEventListener("click", () => {
 });
 
 document.querySelector("#import-doi").addEventListener("click", () => {
-  const doi = doiInput.value.trim();
-  if (doi) {
-    formFields.doi.value = doi;
-  }
-  setStatus("DOI API import is not implemented yet. The DOI field was copied into the editor.");
+  importDoiMetadata();
 });
 
 document.querySelector("#save-paper").addEventListener("click", () => {
@@ -536,19 +727,6 @@ document.querySelector("#save-paper").addEventListener("click", () => {
 
 document.querySelector("#delete-paper").addEventListener("click", () => {
   deleteCurrentPaper().catch((error) => setStatus(`Delete failed: ${error.message}`));
-});
-
-document.querySelector("#export-json").addEventListener("click", exportJson);
-
-document.querySelector("#import-json").addEventListener("click", () => {
-  importFile.click();
-});
-
-importFile.addEventListener("change", () => {
-  const file = importFile.files[0];
-  if (file) {
-    importJsonFile(file);
-  }
 });
 
 createRepository()
