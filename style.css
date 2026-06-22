@@ -72,8 +72,7 @@ label,
 .toolbar,
 .paste-workflow,
 .paper-list-panel,
-.editor-panel,
-.json-panel {
+.editor-panel {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel);
@@ -173,18 +172,14 @@ button:disabled {
 }
 
 #save-paper,
-#copy-chatgpt-prompt,
-#importMarkdownButton,
-#apply-chatgpt-json {
+#importMarkdownButton {
   border-color: var(--accent-dark);
   background: var(--accent);
   color: white;
 }
 
 #save-paper:hover,
-#copy-chatgpt-prompt:hover,
-#importMarkdownButton:hover,
-#apply-chatgpt-json:hover {
+#importMarkdownButton:hover {
   background: var(--accent-dark);
 }
 
@@ -286,11 +281,6 @@ h2 {
   display: grid;
   gap: 14px;
   padding-top: 16px;
-}
-
-.json-panel {
-  box-shadow: none;
-  padding: 14px;
 }
 
 .compact-heading {

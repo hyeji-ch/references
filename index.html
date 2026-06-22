@@ -60,10 +60,6 @@
               <button type="button" id="new-paper">New paper</button>
               <button type="button" id="save-paper">Save</button>
               <button type="button" id="delete-paper">Delete</button>
-              <button type="button" id="copy-chatgpt-prompt">Copy ChatGPT Prompt</button>
-              <button type="button" id="export-json">Export JSON</button>
-              <button type="button" id="import-json">Import JSON</button>
-              <input id="import-file" type="file" accept="application/json,.json" hidden>
             </div>
           </div>
 
@@ -161,14 +157,6 @@
               Abstract (KO)
               <textarea id="abstractKo" name="abstractKo" rows="7"></textarea>
             </label>
-
-            <section class="json-panel" aria-label="ChatGPT JSON import">
-              <div class="section-heading compact-heading">
-                <h2>ChatGPT JSON Paste Import</h2>
-                <button type="button" id="apply-chatgpt-json">Apply JSON to current paper</button>
-              </div>
-              <textarea id="chatgpt-json" rows="10" placeholder="Paste ChatGPT-generated JSON here"></textarea>
-            </section>
           </form>
           <p id="status-message" class="status-message" role="status"></p>
         </section>

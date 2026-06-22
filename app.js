@@ -1,4 +1,4 @@
-const DB_NAME = "literature-doi-database";
+﻿const DB_NAME = "literature-doi-database";
 const DB_VERSION = 1;
 const STORE_NAME = "papers";
 const LOCAL_STORAGE_KEY = "literature-doi-database-papers";
@@ -44,22 +44,6 @@ const searchFields = [
   "rawMarkdown"
 ];
 
-const chatgptJsonFields = [
-  "referenceNature",
-  "tags",
-  "nickname",
-  "title",
-  "journalInfo",
-  "doi",
-  "aimKo",
-  "resultKo",
-  "methodKo",
-  "noteKo",
-  "impactFactor",
-  "summaryKo",
-  "abstractKo"
-];
-
 const samplePaper = {
   id: "sample-paper",
   customTitle: "Transformer architecture paper",
@@ -92,12 +76,10 @@ const paperCount = document.querySelector("#paper-count");
 const emptyList = document.querySelector("#empty-list");
 const searchInput = document.querySelector("#search-input");
 const doiInput = document.querySelector("#doi-input");
-const importFile = document.querySelector("#import-file");
 const statusMessage = document.querySelector("#status-message");
 const deleteButton = document.querySelector("#delete-paper");
 const saveButton = document.querySelector("#save-paper");
 const importDoiButton = document.querySelector("#import-doi");
-const chatgptJsonInput = document.querySelector("#chatgpt-json");
 const mainMarkdownInput = document.querySelector("#markdownPasteInput");
 const mainMarkdownStatus = document.querySelector("#markdownImportStatus");
 const mainMarkdownCount = document.querySelector("#main-markdown-count");
@@ -184,11 +166,6 @@ function createIndexedDbRepository(db) {
         store.put(normalizePaper(paper));
       });
     },
-    saveMany(records) {
-      return withStore("readwrite", (store) => {
-        records.forEach((paper) => store.put(normalizePaper(paper)));
-      });
-    },
     delete(id) {
       return withStore("readwrite", (store) => {
         store.delete(id);
@@ -226,19 +203,6 @@ function createLocalStorageRepository() {
       }
       write(records);
     },
-    async saveMany(importedRecords) {
-      const records = read();
-      importedRecords.forEach((paper) => {
-        const normalized = normalizePaper(paper);
-        const index = records.findIndex((record) => record.id === normalized.id);
-        if (index >= 0) {
-          records[index] = normalized;
-        } else {
-          records.push(normalized);
-        }
-      });
-      write(records);
-    },
     async delete(id) {
       write(read().filter((record) => record.id !== id));
     }
@@ -257,6 +221,7 @@ function normalizePaper(paper) {
   normalized.tags = Array.isArray(paper.tags)
     ? paper.tags.map(String).map((tag) => tag.trim()).filter(Boolean)
     : parseTags(paper.tags || "");
+  normalized.customTitle = normalizeCustomTitle(normalized.customTitle);
   normalized.createdAt = normalized.createdAt || now;
   normalized.updatedAt = normalized.updatedAt || now;
 
@@ -285,6 +250,14 @@ function parseTags(value) {
     .split(",")
     .map((tag) => tag.trim())
     .filter(Boolean);
+}
+
+function normalizeCustomTitle(value) {
+  return String(value || "")
+    .replace(/\s*(?:\?|\u2014|\u2013)\s*/g, " - ")
+    .replace(/\s+-\s+/g, " - ")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
 function removeMarkdownReferenceNoise(value) {
@@ -374,7 +347,7 @@ function shortKeyTopicFromTitle(title) {
 function buildCustomTitleFromMarkdownRecord(record) {
   const topic = shortKeyTopicFromTitle(record.title);
   if (record.nickname && topic) {
-    return `${record.nickname} ? ${topic}`;
+    return `${record.nickname} - ${topic}`;
   }
   return record.nickname || topic || "";
 }
@@ -536,7 +509,7 @@ function getFormPaper() {
   return normalizePaper({
     ...existing,
     id: formFields.id.value.trim() || existing.id || generateId(),
-    customTitle: formFields.customTitle.value.trim(),
+    customTitle: normalizeCustomTitle(formFields.customTitle.value),
     referenceNature: formFields.referenceNature.value.trim(),
     tags: parseTags(formFields.tags.value),
     nickname: formFields.nickname.value.trim(),
@@ -560,7 +533,7 @@ function loadPaperIntoForm(paper) {
   currentPaper = normalizePaper(paper);
   selectedPaperId = currentPaper.id;
   formFields.id.value = currentPaper.id;
-  formFields.customTitle.value = currentPaper.customTitle;
+  formFields.customTitle.value = normalizeCustomTitle(currentPaper.customTitle);
   formFields.referenceNature.value = currentPaper.referenceNature;
   formFields.tags.value = currentPaper.tags.join(", ");
   formFields.nickname.value = currentPaper.nickname;
@@ -968,212 +941,6 @@ async function deleteCurrentPaper() {
   setStatus("Paper deleted.");
 }
 
-function buildChatGptPrompt() {
-  const paper = getFormPaper();
-  const context = {
-    doi: paper.doi,
-    title: paper.title,
-    journalInfo: paper.journalInfo,
-    abstractOriginal: paper.abstractOriginal
-  };
-
-  return [
-    "You are helping create a personal literature database record.",
-    "Generate valid JSON only. Do not include Markdown fences or commentary.",
-    "Use Korean for fields ending in Ko.",
-    "Do not invent bibliographic metadata if it is missing; keep missing values as empty strings.",
-    "Return exactly these fields:",
-    "0. referenceNature",
-    "1. tags",
-    "2. nickname",
-    "3. title",
-    "4. journalInfo",
-    "5. doi",
-    "6. aimKo",
-    "7. resultKo",
-    "8. methodKo",
-    "9. noteKo",
-    "10. impactFactor",
-    "11. summaryKo",
-    "12. abstractKo",
-    "",
-    "JSON shape:",
-    JSON.stringify({
-      referenceNature: "",
-      tags: [],
-      nickname: "",
-      title: "",
-      journalInfo: "",
-      doi: "",
-      aimKo: "",
-      resultKo: "",
-      methodKo: "",
-      noteKo: "",
-      impactFactor: "",
-      summaryKo: "",
-      abstractKo: ""
-    }, null, 2),
-    "",
-    "Source metadata:",
-    JSON.stringify(context, null, 2)
-  ].join("\n");
-}
-
-async function copyChatGptPrompt() {
-  const prompt = buildChatGptPrompt();
-
-  try {
-    if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(prompt);
-    } else {
-      const temporary = document.createElement("textarea");
-      temporary.value = prompt;
-      temporary.setAttribute("readonly", "");
-      temporary.style.position = "fixed";
-      temporary.style.left = "-9999px";
-      document.body.appendChild(temporary);
-      temporary.select();
-      document.execCommand("copy");
-      temporary.remove();
-    }
-    setStatus("ChatGPT prompt copied.");
-  } catch (error) {
-    console.error("Failed to copy ChatGPT prompt.", error);
-    setStatus("Could not copy prompt. Select and copy manually from the generated text.");
-  }
-}
-
-function normalizeChatGptJsonRecord(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("Expected a JSON object.");
-  }
-
-  const normalized = {};
-  chatgptJsonFields.forEach((field) => {
-    if (field === "tags") {
-      if (Array.isArray(value.tags)) {
-        normalized.tags = value.tags.map(String).map((tag) => tag.trim()).filter(Boolean);
-      } else if (typeof value.tags === "string") {
-        normalized.tags = parseTags(value.tags);
-      } else {
-        normalized.tags = [];
-      }
-      return;
-    }
-
-    normalized[field] = typeof value[field] === "string" ? value[field].trim() : "";
-  });
-
-  return normalized;
-}
-
-function hasOverwriteConflicts(existing, incoming) {
-  return chatgptJsonFields.some((field) => {
-    const currentValue = field === "tags" ? existing.tags.join(", ") : existing[field];
-    const incomingValue = field === "tags" ? incoming.tags.join(", ") : incoming[field];
-    return currentValue && incomingValue && currentValue !== incomingValue;
-  });
-}
-
-function applyChatGptJsonToCurrentPaper() {
-  let parsed;
-
-  try {
-    parsed = JSON.parse(chatgptJsonInput.value.trim());
-  } catch (error) {
-    console.error("Failed to parse ChatGPT JSON.", error);
-    setStatus("Invalid JSON.");
-    return;
-  }
-
-  try {
-    const incoming = normalizeChatGptJsonRecord(parsed);
-    const existing = getFormPaper();
-
-    if (hasOverwriteConflicts(existing, incoming) && !confirm("This JSON will overwrite existing edited fields. Apply it anyway?")) {
-      return;
-    }
-
-    currentPaper = normalizePaper({
-      ...existing,
-      ...incoming,
-      id: existing.id,
-      createdAt: existing.createdAt,
-      updatedAt: new Date().toISOString()
-    });
-    selectedPaperId = currentPaper.id;
-    loadPaperIntoForm(currentPaper);
-    renderPaperList();
-    setStatus("ChatGPT JSON imported. Review, then Save.");
-  } catch (error) {
-    console.error("Invalid ChatGPT JSON shape.", error);
-    setStatus("Invalid JSON.");
-  }
-}
-
-function validateExportedRecords(value) {
-  const records = Array.isArray(value) ? value : value && Array.isArray(value.papers) ? value.papers : null;
-
-  if (!records) {
-    throw new Error("Expected an array of paper records or an object with a papers array.");
-  }
-
-  return records.map((record, index) => {
-    if (!record || typeof record !== "object" || Array.isArray(record)) {
-      throw new Error(`Record ${index + 1} is not an object.`);
-    }
-
-    if (record.tags && !Array.isArray(record.tags) && typeof record.tags !== "string") {
-      throw new Error(`Record ${index + 1} has invalid tags.`);
-    }
-
-    return normalizePaper(record);
-  });
-}
-
-function exportJson() {
-  const data = JSON.stringify(papers.map(normalizePaper), null, 2);
-  const blob = new Blob([data], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-
-  link.href = url;
-  link.download = `literature-doi-database-${new Date().toISOString().slice(0, 10)}.json`;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-  setStatus("Exported JSON file.");
-}
-
-function importJsonFile(file) {
-  const reader = new FileReader();
-
-  reader.onload = async () => {
-    try {
-      const parsed = JSON.parse(reader.result);
-      const importedRecords = validateExportedRecords(parsed);
-      await repository.saveMany(importedRecords);
-      selectedPaperId = importedRecords[0] ? importedRecords[0].id : selectedPaperId;
-      await refreshFromStorage();
-      setStatus(`Imported ${importedRecords.length} ${importedRecords.length === 1 ? "record" : "records"}.`);
-    } catch (error) {
-      console.error("Failed to import JSON file.", error);
-      setStatus("Invalid JSON.");
-    } finally {
-      importFile.value = "";
-    }
-  };
-
-  reader.onerror = () => {
-    console.error("Failed to read JSON import file.", reader.error);
-    setStatus("Invalid JSON.");
-    importFile.value = "";
-  };
-
-  reader.readAsText(file);
-}
-
 paperList.addEventListener("click", (event) => {
   const selectedButton = event.target.closest("button[data-paper-id]");
   if (!selectedButton) {
@@ -1210,10 +977,6 @@ document.querySelector("#delete-paper").addEventListener("click", () => {
   deleteCurrentPaper().catch((error) => setStatus(`Delete failed: ${error.message}`));
 });
 
-document.querySelector("#copy-chatgpt-prompt").addEventListener("click", () => {
-  copyChatGptPrompt();
-});
-
 document.querySelector("#clearMarkdownButton").addEventListener("click", () => {
   mainMarkdownInput.value = "";
   mainMarkdownStatus.textContent = "";
@@ -1230,23 +993,6 @@ document.querySelector("#importMarkdownButton").addEventListener("click", () => 
     console.error("Markdown import failed.", error);
     setTargetStatus(mainMarkdownStatus, "Markdown import failed.");
   });
-});
-
-document.querySelector("#apply-chatgpt-json").addEventListener("click", () => {
-  applyChatGptJsonToCurrentPaper();
-});
-
-document.querySelector("#export-json").addEventListener("click", exportJson);
-
-document.querySelector("#import-json").addEventListener("click", () => {
-  importFile.click();
-});
-
-importFile.addEventListener("change", () => {
-  const file = importFile.files[0];
-  if (file) {
-    importJsonFile(file);
-  }
 });
 
 createRepository()
