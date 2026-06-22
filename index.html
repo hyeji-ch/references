@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Literature DOI Database</title>
+    <link rel="stylesheet" href="style.css">
+  </head>
+  <body>
+    <header class="app-header">
+      <div>
+        <h1>Literature DOI Database</h1>
+        <p>Personal reference notes and DOI records</p>
+      </div>
+    </header>
+
+    <main class="app-shell">
+      <section class="toolbar" aria-label="Import and search tools">
+        <div class="field-group doi-group">
+          <label for="doi-input">DOI</label>
+          <div class="inline-control">
+            <input id="doi-input" type="text" placeholder="10.1038/s41586-020-2649-2">
+            <button type="button" id="import-doi">Import DOI</button>
+          </div>
+        </div>
+
+        <div class="field-group search-group">
+          <label for="search-input">Search</label>
+          <input id="search-input" type="search" placeholder="Search saved papers">
+        </div>
+      </section>
+
+      <div class="content-grid">
+        <aside class="paper-list-panel" aria-label="Saved papers">
+          <div class="section-heading">
+            <h2>Saved Papers</h2>
+            <span class="count">1 paper</span>
+          </div>
+          <ul id="paper-list" class="paper-list"></ul>
+        </aside>
+
+        <section class="editor-panel" aria-label="Paper detail editor">
+          <div class="section-heading">
+            <h2>Paper Details</h2>
+            <div class="button-row">
+              <button type="button" id="new-paper">New paper</button>
+              <button type="button" id="save-paper">Save</button>
+              <button type="button" id="delete-paper">Delete</button>
+              <button type="button" id="export-json">Export JSON</button>
+              <button type="button" id="import-json">Import JSON</button>
+            </div>
+          </div>
+
+          <form id="paper-form" class="paper-form">
+            <label>
+              Title
+              <input id="paper-title" type="text">
+            </label>
+
+            <label>
+              Authors
+              <input id="paper-authors" type="text">
+            </label>
+
+            <div class="form-row">
+              <label>
+                Year
+                <input id="paper-year" type="text" inputmode="numeric">
+              </label>
+
+              <label>
+                DOI
+                <input id="paper-doi" type="text">
+              </label>
+            </div>
+
+            <label>
+              Journal
+              <input id="paper-journal" type="text">
+            </label>
+
+            <label>
+              Notes
+              <textarea id="paper-notes" rows="8"></textarea>
+            </label>
+          </form>
+        </section>
+      </div>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
