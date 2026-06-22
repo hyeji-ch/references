@@ -70,6 +70,7 @@ label,
 }
 
 .toolbar,
+.paste-workflow,
 .paper-list-panel,
 .editor-panel,
 .json-panel {
@@ -81,10 +82,34 @@ label,
 
 .toolbar {
   display: grid;
-  grid-template-columns: minmax(260px, 1.3fr) minmax(220px, 0.7fr);
+  grid-template-columns: minmax(220px, 0.7fr) minmax(260px, 1fr);
   gap: 16px;
   padding: 16px;
   margin-bottom: 16px;
+}
+
+.paste-workflow {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.paste-workflow h2 {
+  font-size: 1.12rem;
+}
+
+.paste-actions {
+  justify-content: flex-start;
+}
+
+.secondary-toolbar {
+  background: #fcfaf4;
+  box-shadow: none;
+}
+
+.secondary-doi {
+  opacity: 0.86;
 }
 
 .field-group,
@@ -148,9 +173,9 @@ button:disabled {
 }
 
 #save-paper,
-#import-doi,
 #copy-chatgpt-prompt,
-#paste-chatgpt-markdown,
+#main-parse-markdown,
+#main-import-markdown,
 #parse-markdown-preview,
 #import-markdown-current,
 #apply-chatgpt-json {
@@ -160,9 +185,9 @@ button:disabled {
 }
 
 #save-paper:hover,
-#import-doi:hover,
 #copy-chatgpt-prompt:hover,
-#paste-chatgpt-markdown:hover,
+#main-parse-markdown:hover,
+#main-import-markdown:hover,
 #parse-markdown-preview:hover,
 #import-markdown-current:hover,
 #apply-chatgpt-json:hover {
@@ -326,6 +351,11 @@ h2 {
   gap: 8px;
   border-top: 1px solid var(--line);
   padding-top: 12px;
+}
+
+.compact-preview {
+  max-height: 300px;
+  overflow: auto;
 }
 
 .preview-row {

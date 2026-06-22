@@ -3,30 +3,45 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Literature DOI Database</title>
+    <title>Literature Summary Archive</title>
     <link rel="stylesheet" href="style.css">
   </head>
   <body>
     <header class="app-header">
       <div>
-        <h1>Literature DOI Database</h1>
-        <p>Personal reference notes and DOI records</p>
+        <h1>Literature Summary Archive</h1>
+        <p>ChatGPT 12-section markdown to structured literature records</p>
       </div>
     </header>
 
     <main class="app-shell">
-      <section class="toolbar" aria-label="Import and search tools">
-        <div class="field-group doi-group">
-          <label for="doi-input">DOI</label>
+      <section class="paste-workflow" aria-label="ChatGPT markdown import">
+        <div class="section-heading compact-heading">
+          <h2>Paste ChatGPT 12-section Markdown</h2>
+          <span id="main-markdown-count" class="count">Parsed 0/13 sections</span>
+        </div>
+        <textarea id="main-chatgpt-markdown" rows="14" placeholder="Paste the full ChatGPT 0–12 literature summary here."></textarea>
+        <div class="button-row paste-actions">
+          <button type="button" id="main-parse-markdown">Parse Markdown</button>
+          <button type="button" id="clear-main-markdown">Clear Paste Box</button>
+          <button type="button" id="main-import-markdown">Import Parsed Record</button>
+        </div>
+        <p id="main-markdown-status" class="status-message" role="status"></p>
+        <div id="main-markdown-preview" class="markdown-preview compact-preview" aria-live="polite"></div>
+      </section>
+
+      <section class="toolbar secondary-toolbar" aria-label="Search and secondary DOI tools">
+        <div class="field-group search-group">
+          <label for="search-input">Search</label>
+          <input id="search-input" type="search" placeholder="Search saved papers">
+        </div>
+
+        <div class="field-group doi-group secondary-doi">
+          <label for="doi-input">Optional DOI metadata import</label>
           <div class="inline-control">
             <input id="doi-input" type="text" placeholder="10.1038/s41586-020-2649-2">
             <button type="button" id="import-doi">Import DOI</button>
           </div>
-        </div>
-
-        <div class="field-group search-group">
-          <label for="search-input">Search</label>
-          <input id="search-input" type="search" placeholder="Search saved papers">
         </div>
       </section>
 
@@ -48,7 +63,6 @@
               <button type="button" id="save-paper">Save</button>
               <button type="button" id="delete-paper">Delete</button>
               <button type="button" id="copy-chatgpt-prompt">Copy ChatGPT Prompt</button>
-              <button type="button" id="paste-chatgpt-markdown">Paste ChatGPT Markdown</button>
               <button type="button" id="export-json">Export JSON</button>
               <button type="button" id="import-json">Import JSON</button>
               <input id="import-file" type="file" accept="application/json,.json" hidden>
