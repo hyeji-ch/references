@@ -79,6 +79,10 @@ const searchInput = document.querySelector("#search-input");
 const statusMessage = document.querySelector("#status-message");
 const deleteButton = document.querySelector("#delete-paper");
 const saveButton = document.querySelector("#save-paper");
+const editModeButton = document.querySelector("#editModeButton");
+const previewModeButton = document.querySelector("#previewModeButton");
+const paperForm = document.querySelector("#paper-form");
+const paperPreview = document.querySelector("#paper-preview");
 const mainMarkdownInput = document.querySelector("#markdownPasteInput");
 const mainMarkdownStatus = document.querySelector("#markdownImportStatus");
 const mainMarkdownCount = document.querySelector("#main-markdown-count");
@@ -486,6 +490,7 @@ async function importMarkdownToCurrentRecord(options = {}) {
   loadPaperIntoForm(importedPaper);
   renderPaperList();
   saveButton.disabled = false;
+  setDetailsMode("preview");
 
   const warnings = [];
   if (parsed.foundCount < 8) {
@@ -502,8 +507,8 @@ async function importMarkdownToCurrentRecord(options = {}) {
   setTargetStatus(
     options.statusTarget || null,
     warnings.length
-      ? `Imported ${parsed.foundCount}/13 sections. Paste box cleared. ${warnings.join(" ")} Review fields and click Save.`
-      : `Imported ${parsed.foundCount}/13 sections. Paste box cleared. Review fields and click Save.`
+      ? `Imported successfully. Preview mode is active. Switch to Edit mode to modify fields. ${warnings.join(" ")}`
+      : "Imported successfully. Preview mode is active. Switch to Edit mode to modify fields."
   );
 }
 
@@ -631,6 +636,110 @@ function setTargetStatus(target, message) {
   setStatus(message);
 }
 
+function escapeHtml(text) {
+  return String(text || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function renderInlineMarkdown(text) {
+  return escapeHtml(text)
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>");
+}
+
+function renderMarkdown(text) {
+  const normalized = String(text || "").replace(/\r\n/g, "\n").trim();
+  if (!normalized) {
+    return "<p class=\"empty-state\">(empty)</p>";
+  }
+
+  const blocks = normalized.split(/\n{2,}/);
+  return blocks.map((block) => {
+    const lines = block.split("\n");
+    const isList = lines.every((line) => /^\s*[-*]\s+/.test(line) || !line.trim());
+
+    if (isList) {
+      const items = lines
+        .filter((line) => line.trim())
+        .map((line) => `<li>${renderInlineMarkdown(line.replace(/^\s*[-*]\s+/, ""))}</li>`)
+        .join("");
+      return `<ul>${items}</ul>`;
+    }
+
+    return `<p>${lines.map(renderInlineMarkdown).join("<br>")}</p>`;
+  }).join("");
+}
+
+const previewSections = [
+  ["0. 참고문헌 표기법", "referenceNature"],
+  ["1. 태그", "tags"],
+  ["2. 닉네임", "nickname"],
+  ["3. 제목", "title"],
+  ["4. 문헌 정보", "journalInfo"],
+  ["5. DOI", "doi"],
+  ["6. 연구 목적", "aimKo"],
+  ["7. 연구 결과", "resultKo"],
+  ["8. 연구 방법", "methodKo"],
+  ["9. 비고", "noteKo"],
+  ["10. 임팩트 팩터", "impactFactor"],
+  ["11. 내용 요약본", "summaryKo"],
+  ["12. Abstract 번역", "abstractKo"]
+];
+
+function renderPaperPreview(paper) {
+  const record = normalizePaper(paper || getFormPaper());
+  paperPreview.innerHTML = "";
+
+  previewSections.forEach(([label, field]) => {
+    const section = document.createElement("section");
+    const heading = document.createElement("span");
+    const body = document.createElement("div");
+    section.className = "preview-section";
+    heading.className = "preview-section-label";
+    body.className = "preview-section-body";
+    heading.textContent = label;
+
+    if (field === "tags") {
+      const tags = record.tags.length ? record.tags : [];
+      if (tags.length) {
+        const row = document.createElement("div");
+        row.className = "tag-chip-row";
+        tags.forEach((tag) => {
+          const chip = document.createElement("span");
+          chip.className = "tag-chip";
+          chip.textContent = tag;
+          row.appendChild(chip);
+        });
+        body.appendChild(row);
+      } else {
+        body.innerHTML = renderMarkdown("");
+      }
+    } else {
+      body.innerHTML = renderMarkdown(record[field]);
+    }
+
+    section.appendChild(heading);
+    section.appendChild(body);
+    paperPreview.appendChild(section);
+  });
+}
+
+function setDetailsMode(mode) {
+  const previewMode = mode === "preview";
+  if (previewMode) {
+    renderPaperPreview(currentPaper || getFormPaper());
+  }
+
+  paperForm.hidden = previewMode;
+  paperPreview.hidden = !previewMode;
+  editModeButton.classList.toggle("active", !previewMode);
+  previewModeButton.classList.toggle("active", previewMode);
+}
+
 function normalizeDoiInput(value) {
   const cleaned = value
     .trim()
@@ -703,6 +812,7 @@ async function saveCurrentPaper() {
   currentPaper = paper;
   selectedPaperId = paper.id;
   await refreshFromStorage();
+  setDetailsMode("preview");
   setStatus("Record saved.");
 }
 
@@ -733,6 +843,7 @@ paperList.addEventListener("click", (event) => {
   if (selectedPaper) {
     loadPaperIntoForm(selectedPaper);
     renderPaperList();
+    setDetailsMode("preview");
     setStatus("");
   }
 });
@@ -744,6 +855,7 @@ document.querySelector("#new-paper").addEventListener("click", () => {
   selectedPaperId = draft.id;
   loadPaperIntoForm(draft);
   renderPaperList();
+  setDetailsMode("edit");
   setStatus("New blank paper ready. Save to add it to the list.");
 });
 
@@ -753,6 +865,15 @@ document.querySelector("#save-paper").addEventListener("click", () => {
 
 document.querySelector("#delete-paper").addEventListener("click", () => {
   deleteCurrentPaper().catch((error) => setStatus(`Delete failed: ${error.message}`));
+});
+
+editModeButton.addEventListener("click", () => {
+  setDetailsMode("edit");
+});
+
+previewModeButton.addEventListener("click", () => {
+  currentPaper = getFormPaper();
+  setDetailsMode("preview");
 });
 
 document.querySelector("#clearMarkdownButton").addEventListener("click", () => {
@@ -778,6 +899,7 @@ createRepository()
   .then(async (storage) => {
     repository = storage;
     await refreshFromStorage();
+    setDetailsMode("preview");
     setStatus(`Storage ready: ${repository.type}.`);
   })
   .catch((error) => {

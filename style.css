@@ -189,6 +189,13 @@ button:disabled {
   color: var(--danger);
 }
 
+#editModeButton.active,
+#previewModeButton.active {
+  border-color: var(--accent);
+  background: #eef0e6;
+  font-weight: 700;
+}
+
 .content-grid {
   display: grid;
   grid-template-columns: minmax(230px, 320px) 1fr;
@@ -283,6 +290,64 @@ h2 {
   display: grid;
   gap: 14px;
   padding-top: 16px;
+}
+
+.paper-preview {
+  display: grid;
+  gap: 12px;
+  padding-top: 16px;
+}
+
+.preview-section {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fffefa;
+  padding: 12px;
+}
+
+.preview-section-label {
+  display: block;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.preview-section-body {
+  line-height: 1.6;
+  white-space: normal;
+}
+
+.preview-section-body p {
+  margin: 0 0 0.75em;
+}
+
+.preview-section-body p:last-child {
+  margin-bottom: 0;
+}
+
+.preview-section-body ul {
+  margin: 0.25em 0 0.75em 1.25em;
+  padding: 0;
+}
+
+.preview-section-body li {
+  margin: 0.2em 0;
+}
+
+.tag-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tag-chip {
+  border: 1px solid #d8d4c8;
+  border-radius: 999px;
+  background: #f5f0e6;
+  color: var(--ink);
+  font-size: 0.8rem;
+  padding: 2px 8px;
 }
 
 .compact-heading {

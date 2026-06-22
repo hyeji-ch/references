@@ -50,6 +50,8 @@
           <div class="section-heading">
             <h2>Paper Details</h2>
             <div class="button-row">
+              <button type="button" id="editModeButton">Edit</button>
+              <button type="button" id="previewModeButton">Preview</button>
               <button type="button" id="new-paper">New paper</button>
               <button type="button" id="save-paper">Save</button>
               <button type="button" id="delete-paper">Delete</button>
@@ -151,6 +153,7 @@
               <textarea id="abstractKo" name="abstractKo" rows="7"></textarea>
             </label>
           </form>
+          <div id="paper-preview" class="paper-preview" hidden></div>
           <p id="status-message" class="status-message" role="status"></p>
         </section>
       </div>
